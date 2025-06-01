@@ -1,0 +1,53 @@
+{
+  "name": "studiora",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Studiora - Intelligent Nursing Schedule Planner with AI-powered syllabus parsing",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@tanstack/react-query": "^5.17.0",
+    "zustand": "^4.4.7",
+    "date-fns": "^3.1.0",
+    "react-big-calendar": "^1.8.5",
+    "lucide-react": "^0.263.1",
+    "clsx": "^2.0.0",
+    "tailwind-merge": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.55.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "vite": "^5.0.8",
+    "vitest": "^1.1.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.32",
+    "autoprefixer": "^10.4.16"
+  },
+  "keywords": [
+    "nursing",
+    "education",
+    "schedule",
+    "planner",
+    "ai",
+    "syllabus",
+    "parser",
+    "students",
+    "healthcare"
+  ],
+  "author": "Studiora Team",
+  "license": "MIT"
+}
