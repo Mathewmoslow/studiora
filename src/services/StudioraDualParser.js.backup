@@ -241,8 +241,7 @@ export class StudioraDualParser {
             source: 'ai-unique',
             confidence: a.confidence,
             uniqueReason: a.keepReason
-          })),
-          ...(reconciliation.finalAssignments || [])
+          }))
         ];
 
         finalModules = this.mergeArrays(regexResults.modules, aiResults.modules, 'title');
@@ -276,11 +275,6 @@ export class StudioraDualParser {
         };
         break;
     }
-        console.log("🔍 Final assignments being returned:", finalAssignments.length);
-        console.log("🔍 Sample assignment:", finalAssignments[0]);
-        console.log("🔍 Reconciliation data:", reconciliation);
-        console.log("🔍 Events being returned:", finalEvents.length);
-        console.log("🔍 Total items:", finalAssignments.length + finalEvents.length);
 
     return {
       assignments: finalAssignments,
