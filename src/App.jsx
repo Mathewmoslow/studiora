@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Calendar, Clock, Target, AlertCircle, Brain, Upload, Settings, Play, Pause, RotateCcw, ChevronLeft, ChevronRight, Sparkles, Zap } from 'lucide-react';
 import { StudioraDualParser } from './services/StudioraDualParser';
+// Import actual parsers
+import { RegexDocumentParser } from './services/RegexDocumentParser.js';
+import { StudiorAIService } from './services/StudiorAIService.js';
 
 
 // Simple Calendar Component (since we can't use FullCalendar in the artifact)
