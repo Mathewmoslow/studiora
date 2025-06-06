@@ -1,15 +1,185 @@
 // src/services/StudiorAIService.js
-// Studiora's AI Service - Independent parsing and intelligent reconciliation
+// Studiora's AI Service - Sequential enhancement mode with validation
 
 export class StudiorAIService {
   constructor(apiKey, options = {}) {
     this.apiKey = apiKey;
-    this.model = options.model || 'gpt-4'; // Updated to GPT-4
+    this.model = options.model || 'gpt-4o'; // Changed from 'gpt-4' to 'gpt-4o' for 128k context
     this.baseURL = options.baseURL || 'https://api.openai.com/v1';
-    this.timeout = options.timeout || 120000; // Updated to 120s
+    this.timeout = options.timeout || 120000;
     this.maxRetries = options.maxRetries || 3;
   }
 
+  async makeRequest(prompt, options = {}) {
+    const { temperature, taskType, maxTokens } = options;
+    
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+        const response = await fetch(`${this.baseURL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages: [
+              {
+                role: 'system',
+                content: this.getSystemPrompt(taskType)
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: temperature || 0.3,
+            max_tokens: maxTokens || 16000  // Much higher default for GPT-4o
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(`API error ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.choices?.[0]?.message?.content) {
+          throw new Error('Invalid API response format');
+        }
+
+        // Extract content and clean it
+        let content = data.choices[0].message.content;
+        
+        // Remove markdown code blocks if present
+        content = content.replace(/^```json\s*\n?/i, '');
+        content = content.replace(/\n?```\s*$/i, '');
+        content = content.trim();
+        
+        // Try to parse JSON
+        let result;
+        try {
+          result = JSON.parse(content);
+        } catch (parseError) {
+          console.error('Failed to parse AI response:', content);
+          throw new Error(`Invalid JSON response: ${parseError.message}`);
+        }
+        
+        // Add metadata
+        result._meta = {
+          model: this.model,
+          taskType,
+          attempt,
+          timestamp: Date.now(),
+          tokensUsed: data.usage?.total_tokens,
+          studiorVersion: '1.0.0'
+        };
+        
+        return result;
+
+      } catch (error) {
+        console.warn(`🤖 Studiora AI attempt ${attempt} failed:`, error.message);
+        
+        if (attempt === this.maxRetries) {
+          throw error;
+        }
+        
+        // Exponential backoff
+        await this.delay(Math.pow(2, attempt) * 1000);
+      }
+    }
+  }
+
+  getSystemPrompt(taskType) {
+    const basePrompt = `You are Studiora's AI assistant, an expert in nursing education content parsing. You specialize in:
+- Nursing curricula (OB/GYN, Adult Health, NCLEX prep, Gerontology)
+- Academic assignment extraction
+- Educational content analysis
+- Date interpretation and conversion
+- Learning objective identification
+
+Always respond with ONLY valid JSON format. No markdown, no code blocks, no extra text.`;
+
+    switch (taskType) {
+      case 'remainder-parsing':
+        return `${basePrompt}
+
+Your task is REMAINDER PARSING. You are analyzing text that remains AFTER regex extraction.
+- The regex parser has already processed the document and extracted obvious assignments
+- You are ONLY looking at what's left over
+- Find implicit assignments, unusual formats, and missed items
+- DO NOT re-extract what regex already found
+- Focus on context clues and implications`;
+
+      case 'validation-enhancement':
+        return `${basePrompt}
+
+Your task is VALIDATION AND ENHANCEMENT of regex results.
+- Validate EVERY assignment to ensure it's real
+- Convert ALL relative dates to absolute dates
+- Improve unclear descriptions using context
+- Add missing information from surrounding text
+- Standardize formatting and structure
+- Flag any false positives for removal`;
+
+      case 'final-consolidation':
+        return `${basePrompt}
+
+Your task is FINAL CONSOLIDATION of all parsed assignments.
+- Merge assignments from enhanced regex and AI remainder parsing
+- Identify and resolve any duplicates
+- Ensure consistent formatting
+- Order assignments logically by date
+- Create the final authoritative list`;
+
+      case 'sequential-enhancement':
+        return `${basePrompt}
+
+Your task is SEQUENTIAL ENHANCEMENT. A regex parser has already extracted assignments. You must:
+- Validate EVERY assignment found by regex (mandatory)
+- Find and fix missing dates by looking at context
+- Identify any assignments the regex parser missed
+- Flag invalid entries that aren't real assignments
+- Improve accuracy of extracted information`;
+
+      default:
+        return basePrompt;
+    }
+  }
+
+  validateDate(dateString) {
+    if (!dateString) return null;
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return null;
+      
+      // Ensure date is within reasonable academic bounds
+      const minDate = new Date('2025-01-01');
+      const maxDate = new Date('2025-12-31');
+      
+      if (date < minDate || date > maxDate) return null;
+      
+      return date.toISOString().split('T')[0];
+    } catch {
+      return null;
+    }
+  }
+
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /* ===== COMMENTED OUT DUAL PARSER METHODS =====
+  // Original methods for independent parsing and reconciliation
+  
   async parseIndependently(text, template, options = {}) {
     const { onProgress } = options;
     
@@ -45,7 +215,7 @@ export class StudiorAIService {
     
     try {
       const result = await this.makeRequest(prompt, {
-        temperature: 0.1, // Very low for precise reconciliation
+        temperature: 0.1,
         taskType: 'reconciliation',
         maxTokens: 4000
       });
@@ -239,139 +409,6 @@ RESPOND WITH ONLY VALID JSON (no markdown, no code blocks, no extra text):
 }`;
   }
 
-  async makeRequest(prompt, options = {}) {
-    const { temperature, taskType, maxTokens } = options;
-    
-    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-        const response = await fetch(`${this.baseURL}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: this.model,
-            messages: [
-              {
-                role: 'system',
-                content: this.getSystemPrompt(taskType)
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: temperature || 0.3,
-            max_tokens: maxTokens || 4000
-          }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(`API error ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
-        }
-
-        const data = await response.json();
-        
-        if (!data.choices?.[0]?.message?.content) {
-          throw new Error('Invalid API response format');
-        }
-
-        // Extract content and clean it
-        let content = data.choices[0].message.content;
-        
-        // Remove markdown code blocks if present
-        content = content.replace(/^```json\s*\n?/i, '');
-        content = content.replace(/\n?```\s*$/i, '');
-        content = content.trim();
-        
-        // Try to parse JSON
-        let result;
-        try {
-          result = JSON.parse(content);
-        } catch (parseError) {
-          console.error('Failed to parse AI response:', content);
-          throw new Error(`Invalid JSON response: ${parseError.message}`);
-        }
-        
-        // Add metadata
-        result._meta = {
-          model: this.model,
-          taskType,
-          attempt,
-          timestamp: Date.now(),
-          tokensUsed: data.usage?.total_tokens,
-          studiorVersion: '1.0.0'
-        };
-        
-        return result;
-
-      } catch (error) {
-        console.warn(`🤖 Studiora AI attempt ${attempt} failed:`, error.message);
-        
-        if (attempt === this.maxRetries) {
-          throw error;
-        }
-        
-        // Exponential backoff
-        await this.delay(Math.pow(2, attempt) * 1000);
-      }
-    }
-  }
-
-  getSystemPrompt(taskType) {
-    const basePrompt = `You are Studiora's AI assistant, an expert in nursing education content parsing. You specialize in:
-- Nursing curricula (OB/GYN, Adult Health, NCLEX prep, Gerontology)
-- Academic assignment extraction
-- Educational content analysis
-- Date interpretation and conversion
-- Learning objective identification
-
-Always respond with ONLY valid JSON format. No markdown, no code blocks, no extra text.`;
-
-    switch (taskType) {
-      case 'independent-parsing':
-        return `${basePrompt}
-
-Your task is INDEPENDENT PARSING. Parse educational documents comprehensively without any external influence. Extract ALL assignments, dates, and educational content. Pay special attention to:
-- Implicit assignments ("come prepared", "review before")
-- Relative dates that need conversion to absolute dates
-- Nursing-specific terminology and requirements
-- Clinical rotations and lab requirements
-- NCLEX preparation activities`;
-
-      case 'reconciliation':
-        return `${basePrompt}
-
-Your task is INTELLIGENT RECONCILIATION. Two independent parsers analyzed the same document. You must:
-- Compare their results analytically
-- Identify genuine matches vs. unique findings
-- Resolve conflicts with clear reasoning
-- Create the most accurate final result
-- Prioritize completeness and accuracy over either individual parser`;
-
-      case 'sequential-enhancement':
-        return `${basePrompt}
-
-Your task is SEQUENTIAL ENHANCEMENT. A regex parser has already extracted assignments. You must:
-- Validate EVERY assignment found by regex (mandatory)
-- Find and fix missing dates by looking at context
-- Identify any assignments the regex parser missed
-- Flag invalid entries that aren't real assignments
-- Improve accuracy of extracted information`;
-
-      default:
-        return basePrompt;
-    }
-  }
-
   validateAndEnhanceAIResult(result) {
     // Ensure required fields exist
     result.assignments = result.assignments || [];
@@ -407,29 +444,7 @@ Your task is SEQUENTIAL ENHANCEMENT. A regex parser has already extracted assign
 
     return result;
   }
-
-  validateDate(dateString) {
-    if (!dateString) return null;
-    
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return null;
-      
-      // Ensure date is within reasonable academic bounds
-      const minDate = new Date('2025-01-01');
-      const maxDate = new Date('2025-12-31');
-      
-      if (date < minDate || date > maxDate) return null;
-      
-      return date.toISOString().split('T')[0];
-    } catch {
-      return null;
-    }
-  }
-
-  delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  ===== END COMMENTED DUAL PARSER METHODS ===== */
 }
 
 export default StudiorAIService;
