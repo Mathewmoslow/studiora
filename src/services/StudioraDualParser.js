@@ -1,5 +1,5 @@
 // src/services/StudioraDualParser.js
-import { EnhancedStudiorAIService } from './EnhancedStudiorAIService.js';
+import { StudiorAIService } from './StudiorAIService.js';
 import { RegexDocumentParser } from './RegexDocumentParser.js';
 import { 
   CanvasModulesParser, 
@@ -8,20 +8,18 @@ import {
   ScheduleParser,
   DocumentParsers 
 } from './DocumentParsers.js';
-import { EnhancedScheduleParser } from './EnhancedScheduleParser.js';
-import { DocumentTypeConfigs } from './config/DocumentTypeConfigs.js';
 
 export class StudioraDualParser {
   constructor(apiKey, options = {}) {
     this.regexParser = new RegexDocumentParser();
-    this.aiService = new EnhancedStudiorAIService(apiKey, options);
+    this.aiService = new StudiorAIService(apiKey, options);
     
     // Initialize document-specific parsers
     this.documentParsers = {
       'canvas-modules': new CanvasModulesParser(),
       'canvas-assignments': new CanvasAssignmentsParser(),
       'syllabus': new SyllabusParser(),
-      'schedule': new EnhancedScheduleParser(), // Use enhanced version
+      'schedule': new ScheduleParser(),
       'mixed': this.regexParser
     };
   }
@@ -29,69 +27,78 @@ export class StudioraDualParser {
   async parse(text, options = {}, onProgress = null) {
     const { course, documentType = 'mixed', userCourses = [] } = options;
     
-    // Detect domain and build configuration
-    const config = this.buildParserConfig(course, text, options);
-    
-    console.log('🎓 Studiora: Starting sequential enhancement parsing...');
+    console.log('🎓 Studiora: Starting sequential parsing...');
     console.log('📄 Document type:', documentType);
-    console.log('🎯 Domain detected:', config.domainName);
     console.log('📚 Course:', course);
     
     onProgress?.({ 
       stage: 'starting', 
-      message: `Initializing parser for ${config.domainName} content...` 
+      message: 'Initializing parser...'
     });
     
     try {
-      // STAGE 1: Regex parsing with domain configuration
-      onProgress?.({ stage: 'regex', message: 'Regex scanning for assignments...' });
+      // STAGE 1: Regex parsing
+      onProgress?.({ stage: 'regex', message: 'Scanning for assignments...' });
       
-      const regexResults = await this.parseWithRegex(text, course, config, documentType);
+      const regexResults = await this.parseWithRegex(text, course, documentType);
       
       console.log('📊 Regex found:', regexResults.assignments.length, 'assignments');
       onProgress?.({ 
         stage: 'regex-complete', 
-        message: `Regex found ${regexResults.assignments.length} assignments`,
+        message: `Found ${regexResults.assignments.length} assignments`,
         results: regexResults 
       });
       
-      // STAGE 2: AI parses remainder
+      // If no AI key, return regex results
+      if (!this.aiService.apiKey) {
+        console.log('ℹ️ No AI key provided, returning regex results only');
+        return this.formatFinalResults(
+          regexResults.assignments,
+          regexResults,
+          { assignments: [] },
+          'Regex only - no AI enhancement'
+        );
+      }
+      
+      // STAGE 2: AI analyzes remainder
       onProgress?.({ stage: 'ai-remainder', message: 'AI analyzing remaining text...' });
       
       const remainingText = this.removeFoundContent(text, regexResults.assignments);
       console.log('📄 Remaining text length:', remainingText.length, 'characters');
       
       let aiRemainderResults = { assignments: [] };
-      if (remainingText.length > 100 && this.aiService.apiKey) {
-        aiRemainderResults = await this.parseRemainingWithAI(remainingText, regexResults);
+      if (remainingText.length > 100) {
+        aiRemainderResults = await this.aiAnalyzeRemainder(remainingText, regexResults);
         console.log('🤖 AI found', aiRemainderResults.assignments.length, 'additional assignments');
       }
       
-      // STAGE 3: AI validation
-      onProgress?.({ stage: 'ai-validate', message: 'AI validating and enhancing results...' });
+      // STAGE 3: AI validates regex results
+      onProgress?.({ stage: 'ai-validate', message: 'AI validating regex results...' });
       
-      let enhancedRegexResults = regexResults;
-      if (this.aiService.apiKey) {
-        enhancedRegexResults = await this.validateAndEnhanceWithAI(
-          text, 
-          regexResults, 
-          course, 
-          documentType
-        );
-        console.log('✨ AI enhanced', enhancedRegexResults.validatedAssignments?.length || 0, 'assignments');
-      }
+      const validatedResults = await this.aiValidateResults(
+        text, 
+        regexResults, 
+        course, 
+        documentType
+      );
+      console.log('✅ AI validated', validatedResults.assignments.length, 'assignments');
       
-      // STAGE 4: Consolidation
-      onProgress?.({ stage: 'merging', message: 'Consolidating all results...' });
+      // STAGE 4: Merge all results
+      onProgress?.({ stage: 'merging', message: 'Consolidating results...' });
       
-      const finalResults = await this.consolidateResults(
-        enhancedRegexResults,
-        aiRemainderResults,
-        text
+      const finalAssignments = this.mergeResults(
+        validatedResults.assignments,
+        aiRemainderResults.assignments
       );
       
-      console.log('✅ Final result:', finalResults.assignments.length, 'total assignments');
-      console.log('🎯 Domain:', config.domainName);
+      console.log('✨ Final result:', finalAssignments.length, 'total assignments');
+      
+      const finalResults = this.formatFinalResults(
+        finalAssignments,
+        regexResults,
+        aiRemainderResults,
+        `Sequential: ${finalAssignments.length} assignments`
+      );
       
       onProgress?.({ 
         stage: 'complete', 
@@ -108,28 +115,10 @@ export class StudioraDualParser {
     }
   }
 
-  buildParserConfig(course, text, options) {
-    // Use DocumentTypeConfigs to build domain-aware configuration
-    return DocumentTypeConfigs.buildConfig(course, text, {
-      documentType: options.documentType,
-      defaultYear: options.defaultYear || new Date().getFullYear(),
-      semesterStart: options.semesterStart,
-      semesterEnd: options.semesterEnd,
-      minConfidenceForAI: options.minConfidenceForAI || 0.7,
-      ...options.customConfig
-    });
-  }
-
-  async parseWithRegex(text, course, config, documentType = 'mixed') {
-    // Create parser with configuration
+  async parseWithRegex(text, course, documentType = 'mixed') {
     const parser = this.documentParsers[documentType] || this.documentParsers['mixed'];
     
-    // If it's the enhanced parser, pass config
-    if (parser instanceof EnhancedScheduleParser) {
-      parser.config = config;
-    }
-    
-    console.log(`📄 Using ${documentType} parser:`, parser.constructor.name);
+    console.log(`📄 Using parser:`, parser.constructor.name);
     
     let results;
     if (documentType === 'mixed' || !this.documentParsers[documentType]) {
@@ -143,8 +132,7 @@ export class StudioraDualParser {
       id: assignment.id || `regex_${Date.now()}_${idx}`,
       course: assignment.course || course || 'unknown',
       source: `regex-${documentType}`,
-      extractedFrom: assignment.extractedFrom || null,
-      domain: config.domain
+      extractedFrom: assignment.extractedFrom || null
     }));
     
     return {
@@ -155,8 +143,6 @@ export class StudioraDualParser {
       source: `regex-${documentType}`,
       documentType: documentType,
       parserUsed: parser.constructor.name,
-      domain: config.domain,
-      domainName: config.domainName,
       timestamp: Date.now()
     };
   }
@@ -190,77 +176,136 @@ export class StudioraDualParser {
     return remainingText;
   }
 
-  async parseRemainingWithAI(remainingText, regexResults) {
-    return this.aiService.parseRemainingWithAI(remainingText, regexResults);
-  }
+  async aiAnalyzeRemainder(remainingText, regexResults) {
+    try {
+      const prompt = `
+You are analyzing the REMAINING text after regex extraction. The regex parser already found ${regexResults.assignments.length} assignments.
 
-  async validateAndEnhanceWithAI(originalText, regexResults, course, documentType) {
-    return this.aiService.validateAndEnhanceWithAI(originalText, regexResults, course, documentType);
-  }
+REMAINING TEXT:
+${remainingText}
 
-  async consolidateResults(enhancedRegexResults, aiRemainderResults, originalText) {
-    const allAssignments = [
-      ...(enhancedRegexResults.assignments || []),
-      ...(aiRemainderResults.assignments || [])
-    ];
-    
-    if (this.aiService.apiKey && allAssignments.length > 0) {
-      const consolidated = await this.aiService.consolidateResults(
-        enhancedRegexResults, 
-        aiRemainderResults, 
-        originalText
-      );
-      
-      return this.formatFinalResults(
-        consolidated.assignments,
-        enhancedRegexResults,
-        aiRemainderResults,
-        consolidated.metadata?.consolidation?.summary
-      );
+Look for assignments the regex missed. These might be:
+- Implicit assignments ("prepare for class", "review before exam")
+- Assignments in unusual formats
+- Clinical or lab preparations
+- Activities not matching standard patterns
+
+Return ONLY assignments NOT already found by regex.
+
+Respond with JSON:
+{
+  "assignments": [
+    {
+      "text": "Assignment description",
+      "date": "YYYY-MM-DD or null",
+      "type": "assignment|quiz|exam|reading|lab|clinical|activity",
+      "hours": 1.5,
+      "course": "${regexResults.assignments[0]?.course || 'unknown'}"
     }
-    
-    const uniqueAssignments = this.simpleDeduplication(allAssignments);
-    
-    return this.formatFinalResults(
-      uniqueAssignments,
-      enhancedRegexResults,
-      aiRemainderResults,
-      'Simple deduplication used'
-    );
+  ]
+}`;
+
+      const result = await this.aiService.parse(prompt, 'json');
+      
+      return {
+        assignments: (result.assignments || []).map((a, idx) => ({
+          ...a,
+          id: `ai_remainder_${Date.now()}_${idx}`,
+          source: 'ai-remainder',
+          confidence: 0.7
+        }))
+      };
+      
+    } catch (error) {
+      console.warn('⚠️ AI remainder analysis failed:', error.message);
+      return { assignments: [] };
+    }
   }
 
-  formatFinalResults(assignments, enhancedRegexResults, aiRemainderResults, summary) {
-    return {
-      assignments: assignments,
-      modules: enhancedRegexResults.modules || [],
-      events: enhancedRegexResults.events || [],
-      metadata: {
-        method: 'sequential-enhancement',
-        domain: enhancedRegexResults.domain,
-        domainName: enhancedRegexResults.domainName,
-        confidence: this.calculateFinalConfidence(assignments),
-        regexFound: enhancedRegexResults.assignments?.length || 0,
-        aiFoundInRemainder: aiRemainderResults.assignments?.length || 0,
-        invalidatedByAI: enhancedRegexResults.invalidCount || 0,
-        totalFinal: assignments.length,
-        summary: summary || `Sequential: ${assignments.length} final assignments`,
-        stages: {
-          regex: 'completed',
-          aiRemainder: aiRemainderResults.assignments?.length > 0 ? 'found-additional' : 'none-found',
-          aiValidation: enhancedRegexResults.validatedAssignments ? 'completed' : 'skipped',
-          consolidation: 'completed'
+  async aiValidateResults(originalText, regexResults, course, documentType) {
+    try {
+      const contextWindow = Math.min(originalText.length, 3000);
+      const prompt = `
+You are validating ${regexResults.assignments.length} assignments extracted from a ${documentType} document.
+
+DOCUMENT CONTEXT (first ${contextWindow} chars):
+${originalText.substring(0, contextWindow)}
+
+EXTRACTED ASSIGNMENTS:
+${JSON.stringify(regexResults.assignments.slice(0, 50), null, 2)}
+${regexResults.assignments.length > 50 ? `\n... and ${regexResults.assignments.length - 50} more assignments` : ''}
+
+VALIDATION TASKS:
+1. Verify each assignment is real (not a header or description)
+2. Fix any dates - convert to YYYY-MM-DD format
+3. Add missing information from context
+4. Remove any obvious false positives
+
+Current date context: ${new Date().toISOString().split('T')[0]}
+Course: ${course}
+
+Respond with JSON:
+{
+  "validatedAssignments": [
+    {
+      "id": "original assignment id",
+      "text": "Corrected/validated text",
+      "date": "YYYY-MM-DD",
+      "type": "type",
+      "hours": 1.5,
+      "course": "${course}",
+      "isValid": true,
+      "changes": ["what was fixed"]
+    }
+  ],
+  "invalidIds": ["id1", "id2"]
+}`;
+
+      const result = await this.aiService.parse(prompt, 'json');
+      
+      // Apply validation results
+      const validatedAssignments = regexResults.assignments.map(assignment => {
+        const validation = (result.validatedAssignments || []).find(v => v.id === assignment.id);
+        
+        if (validation) {
+          return {
+            ...assignment,
+            ...validation,
+            source: 'regex-ai-validated'
+          };
         }
-      }
-    };
+        
+        // Check if marked invalid
+        if ((result.invalidIds || []).includes(assignment.id)) {
+          return null; // Will be filtered out
+        }
+        
+        return assignment; // Keep as-is
+      }).filter(Boolean); // Remove nulls
+      
+      return {
+        assignments: validatedAssignments,
+        modules: regexResults.modules,
+        events: regexResults.events
+      };
+      
+    } catch (error) {
+      console.warn('⚠️ AI validation failed:', error.message);
+      return regexResults; // Return original if validation fails
+    }
   }
 
-  simpleDeduplication(assignments) {
+  mergeResults(validatedAssignments, remainderAssignments) {
+    const allAssignments = [...validatedAssignments, ...remainderAssignments];
+    
+    // Simple deduplication based on text similarity
     const uniqueMap = new Map();
     
-    assignments.forEach(assignment => {
+    allAssignments.forEach(assignment => {
       const key = `${assignment.text?.toLowerCase().substring(0, 30)}_${assignment.date || 'nodate'}`;
       
-      if (!uniqueMap.has(key) || assignment.aiEnhanced) {
+      if (!uniqueMap.has(key) || assignment.source === 'regex-ai-validated') {
+        // Prefer validated versions
         uniqueMap.set(key, assignment);
       }
     });
@@ -268,22 +313,26 @@ export class StudioraDualParser {
     return Array.from(uniqueMap.values());
   }
 
-  calculateFinalConfidence(assignments) {
-    if (!assignments || assignments.length === 0) return 0.1;
-    
-    let confidence = 0.6;
-    
-    const validated = assignments.filter(a => a.aiEnhanced || a.source?.includes('enhanced')).length;
-    confidence += (validated / assignments.length) * 0.2;
-    
-    const withDates = assignments.filter(a => a.date).length;
-    confidence += (withDates / assignments.length) * 0.1;
-    
-    if (assignments.length >= 5 && assignments.length <= 100) {
-      confidence += 0.1;
-    }
-    
-    return Math.min(0.95, confidence);
+  formatFinalResults(assignments, regexResults, aiRemainderResults, summary) {
+    return {
+      assignments: assignments,
+      modules: regexResults.modules || [],
+      events: regexResults.events || [],
+      metadata: {
+        method: 'sequential',
+        confidence: this.calculateConfidence({ assignments }),
+        regexFound: regexResults.assignments?.length || 0,
+        aiFoundInRemainder: aiRemainderResults.assignments?.length || 0,
+        totalFinal: assignments.length,
+        summary: summary,
+        stages: {
+          regex: 'completed',
+          aiRemainder: aiRemainderResults.assignments?.length > 0 ? 'found-additional' : 'none-found',
+          aiValidation: 'completed',
+          consolidation: 'completed'
+        }
+      }
+    };
   }
 
   calculateConfidence(results) {
@@ -304,112 +353,5 @@ export class StudioraDualParser {
     return Math.min(0.95, confidence);
   }
 }
-  /* ===== COMMENTED OUT DUAL PARSER CODE =====
-  // Original dual parser implementation preserved for reference
-  
-  async parseWithDualMethod(text, options = {}, onProgress = null) {
-    const { course, documentType = 'mixed', userCourses = [] } = options;
-    
-    console.log('🎓 Studiora: Starting dual independent parsing...');
-    
-    try {
-      // Both parsers work independently on full text
-      const [regexResults, aiResults] = await Promise.all([
-        this.parseWithRegex(text, course, userCourses),
-        this.parseWithAI(text, course, documentType)
-      ]);
-      
-      console.log('📊 Regex found:', regexResults.assignments.length);
-      console.log('🤖 AI found:', aiResults.assignments.length);
-      
-      // AI reconciles the differences
-      const reconciled = await this.reconcileWithAI(regexResults, aiResults, text);
-      
-      return reconciled;
-      
-    } catch (error) {
-      console.error('❌ Dual parsing failed:', error);
-      throw error;
-    }
-  }
-  
-  async parseWithAI(text, course, documentType) {
-    try {
-      const aiResults = await this.aiService.parseIndependently(text, documentType, {
-        course,
-        onProgress: (update) => console.log('🤖 AI:', update.message)
-      });
-      
-      return {
-        assignments: (aiResults.assignments || []).map((assignment, idx) => ({
-          ...assignment,
-          id: assignment.id || `ai_${Date.now()}_${idx}`,
-          course: assignment.course || course || 'unknown',
-          source: 'ai-independent'
-        })),
-        modules: aiResults.modules || [],
-        events: aiResults.events || [],
-        confidence: aiResults.overallConfidence || 0.7,
-        source: 'ai-independent'
-      };
-    } catch (error) {
-      console.warn('⚠️ AI parsing failed:', error.message);
-      return { assignments: [], modules: [], events: [], confidence: 0 };
-    }
-  }
-  
-  async reconcileWithAI(regexResults, aiResults, originalText) {
-    try {
-      const reconciliationData = {
-        originalText: originalText.substring(0, 1000),
-        regexResults,
-        aiResults
-      };
-      
-      const reconciled = await this.aiService.reconcileResults(reconciliationData, {
-        onProgress: (update) => console.log('🔄 Reconciliation:', update.message)
-      });
-      
-      // Build final results from reconciliation
-      const finalAssignments = [
-        ...reconciled.matches.map(m => m.resolved),
-        ...reconciled.regexUnique.map(r => r.assignment),
-        ...reconciled.aiUnique.map(a => a.assignment)
-      ];
-      
-      return {
-        assignments: finalAssignments,
-        modules: [...(regexResults.modules || []), ...(aiResults.modules || [])],
-        events: [...(regexResults.events || []), ...(aiResults.events || [])],
-        metadata: {
-          method: 'dual-reconciled',
-          confidence: reconciled.finalConfidence,
-          summary: reconciled.reconciliationSummary
-        }
-      };
-      
-    } catch (error) {
-      console.warn('⚠️ Reconciliation failed:', error.message);
-      return this.simpleMerge(regexResults, aiResults);
-    }
-  }
-  
-  simpleMerge(regexResults, aiResults) {
-    const allAssignments = [
-      ...regexResults.assignments,
-      ...aiResults.assignments
-    ];
-    
-    return {
-      assignments: this.simpleDeduplication(allAssignments),
-      modules: [...regexResults.modules, ...aiResults.modules],
-      events: [...regexResults.events, ...aiResults.events],
-      metadata: {
-        method: 'simple-merge',
-        confidence: (regexResults.confidence + aiResults.confidence) / 2
-      }
-    };
-  }
-  ===== END COMMENTED DUAL PARSER CODE ===== */
 
 export default StudioraDualParser;
