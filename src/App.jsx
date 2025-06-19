@@ -1,46 +1,196 @@
-cat > src/App.jsx << 'EOF'
-import React, { useState, useEffect } from 'react';
-import { BookOpen, Calendar, Settings, Upload, Sparkles, Clock, Target, AlertCircle, Brain, Zap } from 'lucide-react';
-import './App.css';
-import { StudioraDualParser } from './services/StudioraDualParser';
+import React, { useState, useEffect, useRef } from 'react';
+import { BookOpen, Calendar, Settings, Upload, Download, Plus, Edit2, Trash2, Save, X, Brain, FileText, Grid, List, Clock, Users, Sparkles, Zap, AlertCircle } from 'lucide-react';
 
-function StudioraNursingPlanner() {
-  const [currentWeek, setCurrentWeek] = useState(1);
-  const [assignments, setAssignments] = useState([]);
-  const [completedAssignments, setCompletedAssignments] = useState(new Set());
-  const [showParser, setShowParser] = useState(false);
-  const [parsingResults, setParsingResults] = useState(null);
+// Import actual parsers
+import { StudioraDualParser } from './services/StudioraDualParser.js';
 
-  // Load saved data
-  useEffect(() => {
-    const saved = localStorage.getItem('studiora_data');
-    if (saved) {
-      try {
+// Data Management System
+class DataManager {
+  static STORAGE_KEY = 'studiora_complete_data';
+  static VERSION = '1.0.0';
+
+  static saveData(data) {
+    const saveData = {
+      version: this.VERSION,
+      timestamp: new Date().toISOString(),
+      courses: data.courses || [],
+      assignments: data.assignments || [],
+      studyBlocks: data.studyBlocks || [],
+      calendarEvents: data.calendarEvents || [],
+      userPreferences: data.userPreferences || {},
+      parsingHistory: data.parsingHistory || []
+    };
+    
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(saveData));
+    return saveData;
+  }
+
+  static loadData() {
+    try {
+      const saved = localStorage.getItem(this.STORAGE_KEY);
+      if (saved) {
         const data = JSON.parse(saved);
-        setAssignments(data.assignments || []);
-        setCompletedAssignments(new Set(data.completed || []));
-        setParsingResults(data.parsingResults || null);
-      } catch (e) {
-        console.warn('Failed to load saved data:', e);
+        return {
+          courses: data.courses || [],
+          assignments: data.assignments || [],
+          studyBlocks: data.studyBlocks || [],
+          calendarEvents: data.calendarEvents || [],
+          userPreferences: data.userPreferences || {},
+          parsingHistory: data.parsingHistory || []
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to load data:', e);
+    }
+    
+    return {
+      courses: [],
+      assignments: [],
+      studyBlocks: [],
+      calendarEvents: [],
+      userPreferences: {},
+      parsingHistory: []
+    };
+  }
+
+  static exportData(data) {
+    const exportData = {
+      ...this.saveData(data),
+      exportedAt: new Date().toISOString(),
+      appName: 'Studiora',
+      appVersion: this.VERSION
+    };
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `studiora-data-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  static async importData(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          
+          if (!data.courses || !Array.isArray(data.courses)) {
+            throw new Error('Invalid data format: missing courses array');
+          }
+          
+          resolve({
+            courses: data.courses || [],
+            assignments: data.assignments || [],
+            studyBlocks: data.studyBlocks || [],
+            calendarEvents: data.calendarEvents || [],
+            userPreferences: data.userPreferences || {},
+            parsingHistory: data.parsingHistory || []
+          });
+        } catch (error) {
+          reject(new Error(`Failed to parse data file: ${error.message}`));
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  }
+}
+
+// Main App Component
+function StudioraNursingPlanner() {
+  const [appData, setAppData] = useState(DataManager.loadData());
+  const [showAddCourse, setShowAddCourse] = useState(false);
+  const [showImportWizard, setShowImportWizard] = useState(false);
+  const [showDataManager, setShowDataManager] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [completedAssignments, setCompletedAssignments] = useState(new Set());
+
+  // Auto-save when data changes
+  useEffect(() => {
+    DataManager.saveData(appData);
+  }, [appData]);
+
+  // Select first course by default
+  useEffect(() => {
+    if (!selectedCourse && appData.courses.length > 0) {
+      setSelectedCourse(appData.courses[0]);
+    }
+  }, [appData.courses, selectedCourse]);
+
+  const addCourse = (courseData) => {
+    const newCourse = {
+      id: `course_${Date.now()}`,
+      ...courseData,
+      createdAt: new Date().toISOString()
+    };
+    
+    setAppData(prev => ({
+      ...prev,
+      courses: [...prev.courses, newCourse]
+    }));
+    
+    setSelectedCourse(newCourse);
+    setShowAddCourse(false);
+  };
+
+  const updateCourse = (courseId, updates) => {
+    setAppData(prev => ({
+      ...prev,
+      courses: prev.courses.map(c => 
+        c.id === courseId ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c
+      )
+    }));
+  };
+
+  const deleteCourse = (courseId) => {
+    if (window.confirm('Are you sure you want to delete this course and all its assignments?')) {
+      setAppData(prev => ({
+        ...prev,
+        courses: prev.courses.filter(c => c.id !== courseId),
+        assignments: prev.assignments.filter(a => a.courseId !== courseId),
+        studyBlocks: prev.studyBlocks.filter(s => s.courseId !== courseId)
+      }));
+      
+      if (selectedCourse?.id === courseId) {
+        setSelectedCourse(appData.courses.find(c => c.id !== courseId) || null);
       }
     }
-  }, []);
+  };
 
-  // Save data when it changes
-  useEffect(() => {
-    const data = {
-      assignments,
-      completed: Array.from(completedAssignments),
-      parsingResults,
-      lastSaved: new Date().toISOString()
-    };
-    localStorage.setItem('studiora_data', JSON.stringify(data));
-  }, [assignments, completedAssignments, parsingResults]);
+  const handleImportComplete = (parseResults, importOptions) => {
+    const newAssignments = parseResults.assignments.map(assignment => ({
+      ...assignment,
+      courseId: importOptions.courseId,
+      importedAt: new Date().toISOString()
+    }));
+    
+    setAppData(prev => ({
+      ...prev,
+      assignments: [...prev.assignments, ...newAssignments],
+      parsingHistory: [...prev.parsingHistory, {
+        id: `parse_${Date.now()}`,
+        courseId: importOptions.courseId,
+        documentType: importOptions.documentType,
+        assignmentCount: newAssignments.length,
+        confidence: parseResults.metadata?.confidence || parseResults.confidence || 0,
+        timestamp: new Date().toISOString()
+      }]
+    }));
+    
+    setShowImportWizard(false);
+  };
 
-  const handleParseComplete = (results) => {
-    setAssignments(results.assignments || []);
-    setParsingResults(results);
-    setShowParser(false);
+  const handleDataImport = async (importedData) => {
+    setAppData(importedData);
+    setShowDataManager(false);
+    
+    if (importedData.courses.length > 0) {
+      setSelectedCourse(importedData.courses[0]);
+    }
   };
 
   const toggleAssignment = (assignmentId) => {
@@ -53,444 +203,404 @@ function StudioraNursingPlanner() {
     setCompletedAssignments(newCompleted);
   };
 
-  const clearData = () => {
-    if (confirm('Clear all data and start fresh?')) {
-      setAssignments([]);
-      setCompletedAssignments(new Set());
-      setParsingResults(null);
-      localStorage.removeItem('studiora_data');
-    }
-  };
-
-  const completionRate = assignments.length > 0 ? 
-    Math.round((completedAssignments.size / assignments.length) * 100) : 0;
-    
-  const totalHours = assignments.reduce((sum, a) => sum + (a.hours || 0), 0);
-  const upcomingAssignments = assignments.filter(a => 
-    new Date(a.date) >= new Date() && !completedAssignments.has(a.id)
-  ).length;
+  const courseAssignments = selectedCourse 
+    ? appData.assignments.filter(a => a.courseId === selectedCourse.id)
+    : [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <header className="bg-white shadow-sm border-b border-blue-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2">
-                <Sparkles className="h-8 w-8 text-blue-600" />
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                  Studiora
-                </h1>
+              <Brain className="h-8 w-8 text-blue-600" />
+              <div>
+                <h1 className="text-xl font-bold">Studiora</h1>
+                <p className="text-xs text-gray-500">Intelligent Course Management</p>
               </div>
-              <span className="text-sm text-gray-500 font-medium">
-                Intelligent Nursing Schedule Planner
-              </span>
             </div>
             
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">
-                Week {currentWeek} • Spring 2025
-              </span>
+            <div className="flex items-center space-x-2">
+              <nav className="hidden md:flex space-x-2">
+                {['dashboard', 'calendar', 'data'].map(view => (
+                  <button
+                    key={view}
+                    onClick={() => setCurrentView(view)}
+                    className={`px-3 py-1 rounded text-sm capitalize ${
+                      currentView === view ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {view}
+                  </button>
+                ))}
+              </nav>
+              
               <button
-                onClick={clearData}
-                className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200"
+                onClick={() => setShowDataManager(true)}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded"
+                title="Data Management"
               >
-                Clear Data
+                <Settings size={18} />
               </button>
+              
               <button
-                onClick={() => setShowParser(true)}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                onClick={() => setShowImportWizard(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center space-x-2"
+                disabled={appData.courses.length === 0}
               >
                 <Upload size={16} />
-                <span>Import Course Data</span>
+                <span className="hidden sm:inline">Import</span>
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Panel - Assignments */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-                  <BookOpen className="mr-2 h-5 w-5 text-blue-600" />
-                  Assignments ({assignments.length})
-                </h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  {completedAssignments.size} completed • {upcomingAssignments} upcoming
-                </p>
-                
-                {parsingResults?.metadata && (
-                  <div className="mt-3 text-xs bg-blue-50 p-2 rounded">
-                    <div className="flex items-center space-x-1">
-                      <Brain size={12} className="text-blue-600" />
-                      <span className="font-medium">Parsed via {parsingResults.metadata.method}</span>
-                    </div>
-                    <div className="text-blue-600">
-                      Confidence: {Math.round((parsingResults.metadata.confidence || 0) * 100)}%
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="p-6 space-y-4 max-h-96 overflow-y-auto">
-                {assignments.length === 0 ? (
-                  <WelcomeCard onImport={() => setShowParser(true)} />
-                ) : (
-                  assignments
-                    .sort((a, b) => new Date(a.date) - new Date(b.date))
-                    .map((assignment) => (
-                      <AssignmentCard
-                        key={assignment.id}
-                        assignment={assignment}
-                        isCompleted={completedAssignments.has(assignment.id)}
-                        onToggle={() => toggleAssignment(assignment.id)}
-                      />
-                    ))
-                )}
-              </div>
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {appData.courses.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="max-w-md mx-auto">
+              <BookOpen className="mx-auto h-16 w-16 text-gray-300" />
+              <h2 className="mt-4 text-xl font-semibold text-gray-900">Welcome to Studiora!</h2>
+              <p className="mt-2 text-gray-600">
+                Start by adding your first course to begin organizing your assignments and schedule.
+              </p>
+              <button
+                onClick={() => setShowAddCourse(true)}
+                className="mt-6 bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center space-x-2 mx-auto"
+              >
+                <Plus size={20} />
+                <span>Add Your First Course</span>
+              </button>
             </div>
           </div>
-
-          {/* Right Panel - Analytics & Schedule */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Analytics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <StatsCard
-                title="Study Hours"
-                value={totalHours.toFixed(1)}
-                subtitle="Total estimated"
-                icon={Clock}
-                color="blue"
-              />
-              <StatsCard
-                title="Completion"
-                value={`${completionRate}%`}
-                subtitle="Overall progress"
-                icon={Target}
-                color="green"
-              />
-              <StatsCard
-                title="Upcoming"
-                value={upcomingAssignments}
-                subtitle="Due soon"
-                icon={AlertCircle}
-                color="orange"
-              />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-lg shadow p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="font-semibold">My Courses</h2>
+                  <button
+                    onClick={() => setShowAddCourse(true)}
+                    className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                    title="Add Course"
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+                
+                <div className="space-y-2">
+                  {appData.courses.map(course => (
+                    <CourseCard
+                      key={course.id}
+                      course={course}
+                      isSelected={selectedCourse?.id === course.id}
+                      assignmentCount={appData.assignments.filter(a => a.courseId === course.id).length}
+                      onSelect={() => setSelectedCourse(course)}
+                      onEdit={(updates) => updateCourse(course.id, updates)}
+                      onDelete={() => deleteCourse(course.id)}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Assignment Timeline */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-                  <Calendar className="mr-2 h-5 w-5 text-blue-600" />
-                  Assignment Timeline
-                </h2>
-              </div>
-              <div className="p-6">
-                {assignments.length > 0 ? (
-                  <AssignmentTimeline 
-                    assignments={assignments}
-                    completed={completedAssignments}
+            <div className="lg:col-span-3">
+              {selectedCourse ? (
+                currentView === 'dashboard' ? (
+                  <CourseDashboard
+                    course={selectedCourse}
+                    assignments={courseAssignments}
+                    completedAssignments={completedAssignments}
+                    onToggleAssignment={toggleAssignment}
+                    onImport={() => setShowImportWizard(true)}
+                  />
+                ) : currentView === 'calendar' ? (
+                  <CalendarView
+                    course={selectedCourse}
+                    assignments={courseAssignments}
+                    studyBlocks={appData.studyBlocks.filter(s => s.courseId === selectedCourse.id)}
                   />
                 ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <Calendar className="mx-auto h-12 w-12 text-gray-300" />
-                    <p className="mt-4">No assignments imported yet</p>
-                    <p className="text-sm">Import your nursing course data to see the timeline</p>
-                  </div>
-                )}
-              </div>
+                  <DataView appData={appData} />
+                )
+              ) : (
+                <div className="bg-white rounded-lg shadow p-8 text-center">
+                  <BookOpen className="mx-auto h-12 w-12 text-gray-300" />
+                  <p className="mt-4 text-gray-600">Select a course to view its content</p>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Parser Modal */}
-      {showParser && (
-        <StudioraDualParserModal
-          onClose={() => setShowParser(false)}
-          onComplete={handleParseComplete}
+      {showAddCourse && (
+        <AddCourseModal onClose={() => setShowAddCourse(false)} onAdd={addCourse} />
+      )}
+      
+      {showImportWizard && (
+        <ImportWizard
+          courses={appData.courses}
+          onClose={() => setShowImportWizard(false)}
+          onComplete={handleImportComplete}
+        />
+      )}
+      
+      {showDataManager && (
+        <DataManagerModal
+          appData={appData}
+          onClose={() => setShowDataManager(false)}
+          onImport={handleDataImport}
+          onExport={() => DataManager.exportData(appData)}
         />
       )}
     </div>
   );
 }
 
-function WelcomeCard({ onImport }) {
-  return (
-    <div className="text-center py-8 px-4">
-      <div className="flex justify-center mb-4">
-        <div className="p-3 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full">
-          <Brain className="h-8 w-8 text-blue-600" />
-        </div>
-      </div>
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        Ready to Parse Your Nursing Courses
-      </h3>
-      <p className="text-gray-600 mb-6 text-sm leading-relaxed">
-        Import your complete nursing program database. Studiora will use 
-        dual AI + regex parsing to extract every assignment, exam, and deadline.
-      </p>
-      <button
-        onClick={onImport}
-        className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all flex items-center space-x-2 mx-auto"
-      >
-        <Brain size={16} />
-        <span>Start Parsing</span>
-      </button>
-      
-      <div className="mt-6 text-xs text-gray-500">
-        <p>✨ Powered by StudioraDualParser: Independent Regex + AI + Intelligent Reconciliation</p>
-      </div>
-    </div>
-  );
-}
+// Course Card Component
+function CourseCard({ course, isSelected, assignmentCount, onSelect, onEdit, onDelete }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({ code: course.code, name: course.name });
 
-function AssignmentCard({ assignment, isCompleted, onToggle }) {
-  const getSourceBadge = (source) => {
-    if (source?.includes('ai-unique')) {
-      return { text: 'AI Found', color: 'bg-purple-100 text-purple-700', icon: Brain };
-    } else if (source?.includes('reconciled')) {
-      return { text: 'AI+Regex', color: 'bg-green-100 text-green-700', icon: Zap };
-    } else if (source?.includes('regex')) {
-      return { text: 'Regex', color: 'bg-blue-100 text-blue-700', icon: null };
-    }
-    return { text: 'Detected', color: 'bg-gray-100 text-gray-600', icon: null };
+  const handleSave = () => {
+    onEdit(editData);
+    setIsEditing(false);
   };
 
-  const getCourseColor = (course) => {
-    const colors = {
-      'obgyn': 'bg-blue-100 text-blue-800',
-      'adulthealth': 'bg-green-100 text-green-800', 
-      'nclex': 'bg-purple-100 text-purple-800',
-      'geronto': 'bg-orange-100 text-orange-800'
-    };
-    return colors[course] || 'bg-gray-100 text-gray-800';
-  };
-
-  const getTypeColor = (type) => {
-    const colors = {
-      'exam': 'bg-red-100 text-red-800',
-      'quiz': 'bg-yellow-100 text-yellow-800',
-      'reading': 'bg-blue-100 text-blue-800',
-      'video': 'bg-purple-100 text-purple-800',
-      'assignment': 'bg-green-100 text-green-800',
-      'clinical': 'bg-teal-100 text-teal-800',
-      'simulation': 'bg-indigo-100 text-indigo-800'
-    };
-    return colors[type] || 'bg-gray-100 text-gray-800';
-  };
-
-  const sourceBadge = getSourceBadge(assignment.source);
-  const isOverdue = new Date(assignment.date) < new Date() && !isCompleted;
-  const isDueSoon = !isOverdue && new Date(assignment.date) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-  return (
-    <div className={`border rounded-lg p-4 transition-all hover:shadow-md ${
-      isCompleted ? 'bg-gray-50 border-gray-200 opacity-75' : 
-      isOverdue ? 'bg-red-50 border-red-200' :
-      isDueSoon ? 'bg-yellow-50 border-yellow-200' :
-      'bg-white border-gray-200 hover:border-blue-300'
-    }`}>
-      <div className="flex items-start space-x-3">
+  if (isEditing) {
+    return (
+      <div className="border-2 border-blue-300 rounded-lg p-3 bg-blue-50">
         <input
-          type="checkbox"
-          checked={isCompleted}
-          onChange={onToggle}
-          className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+          type="text"
+          value={editData.code}
+          onChange={(e) => setEditData({ ...editData, code: e.target.value })}
+          className="w-full mb-2 px-2 py-1 text-sm border rounded"
+          placeholder="Course Code (e.g., NURS330)"
         />
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between">
-            <p className={`text-sm font-medium ${
-              isCompleted ? 'text-gray-500 line-through' : 'text-gray-900'
-            }`}>
-              {assignment.text}
-            </p>
-          </div>
-          
-          <div className="mt-2 flex items-center space-x-2 text-xs flex-wrap gap-1">
-            <span className={`px-2 py-1 rounded-full ${getCourseColor(assignment.course)}`}>
-              {assignment.course?.toUpperCase()}
-            </span>
-            <span className={`px-2 py-1 rounded-full ${getTypeColor(assignment.type)}`}>
-              {assignment.type?.toUpperCase()}
-            </span>
-            <div className={`px-2 py-1 rounded-full flex items-center space-x-1 ${sourceBadge.color}`}>
-              {sourceBadge.icon && <sourceBadge.icon size={10} />}
-              <span>{sourceBadge.text}</span>
-            </div>
-            <span className={`${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-              {isOverdue ? 'OVERDUE' : new Date(assignment.date).toLocaleDateString()}
-            </span>
-            <span className="text-gray-500">
-              {assignment.hours}h
-            </span>
-            {assignment.confidence && (
-              <span className="text-gray-400">
-                {Math.round(assignment.confidence * 100)}%
-              </span>
-            )}
-          </div>
-
-          {assignment.extractionReason && (
-            <div className="mt-2 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded">
-              🧠 {assignment.extractionReason}
-            </div>
-          )}
+        <input
+          type="text"
+          value={editData.name}
+          onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+          className="w-full mb-2 px-2 py-1 text-sm border rounded"
+          placeholder="Course Name"
+        />
+        <div className="flex space-x-2">
+          <button onClick={handleSave} className="p-1 text-green-600 hover:bg-green-100 rounded">
+            <Save size={14} />
+          </button>
+          <button onClick={() => setIsEditing(false)} className="p-1 text-gray-600 hover:bg-gray-100 rounded">
+            <X size={14} />
+          </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function StatsCard({ title, value, subtitle, icon: Icon, color }) {
-  const colorClasses = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-green-50 text-green-600', 
-    orange: 'bg-orange-50 text-orange-600'
-  };
-
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <div className="flex items-center">
-        <div className={`p-2 rounded-lg ${colorClasses[color]}`}>
-          <Icon className="h-6 w-6" />
-        </div>
-        <div className="ml-4">
-          <p className="text-2xl font-semibold text-gray-900">{value}</p>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-xs text-gray-500">{subtitle}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AssignmentTimeline({ assignments, completed }) {
-  const upcoming = assignments
-    .filter(a => new Date(a.date) >= new Date())
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(0, 10);
-
-  if (upcoming.length === 0) {
-    return <div className="text-gray-500">No upcoming assignments</div>;
+    );
   }
 
   return (
-    <div className="space-y-3">
-      {upcoming.map(assignment => {
-        const isCompleted = completed.has(assignment.id);
-        const daysUntil = Math.ceil((new Date(assignment.date) - new Date()) / (1000 * 60 * 60 * 24));
-        
-        return (
-          <div key={assignment.id} className={`flex items-center justify-between p-3 rounded-lg ${
-            isCompleted ? 'bg-gray-50' : daysUntil <= 3 ? 'bg-yellow-50' : 'bg-blue-50'
-          }`}>
-            <div className="flex-1">
-              <h4 className={`font-medium text-sm ${isCompleted ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                {assignment.text}
-              </h4>
-              <div className="flex items-center space-x-2 mt-1">
-                <span className="text-xs text-gray-500">
-                  {assignment.course?.toUpperCase()} • {assignment.type}
-                </span>
-                <span className="text-xs text-gray-500">
-                  {assignment.hours}h
-                </span>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className={`text-sm font-medium ${
-                daysUntil <= 0 ? 'text-red-600' : 
-                daysUntil <= 3 ? 'text-orange-600' : 'text-gray-600'
-              }`}>
-                {daysUntil <= 0 ? 'Due today' : 
-                 daysUntil === 1 ? 'Tomorrow' : 
-                 `${daysUntil} days`}
-              </div>
-              <div className="text-xs text-gray-500">
-                {new Date(assignment.date).toLocaleDateString()}
-              </div>
-            </div>
-          </div>
-        );
-      })}
+    <div
+      className={`border-2 rounded-lg p-3 cursor-pointer transition-all ${
+        isSelected ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+      }`}
+      onClick={onSelect}
+    >
+      <div className="flex justify-between items-start mb-2">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium text-sm truncate">{course.code}</h3>
+          <p className="text-xs text-gray-600 truncate">{course.name}</p>
+        </div>
+        <div className="flex space-x-1 ml-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+            className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+          >
+            <Edit2 size={12} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-100 rounded"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      </div>
+      
+      <div className="text-xs text-gray-500">
+        {assignmentCount} assignments
+      </div>
     </div>
   );
 }
 
-// Real StudioraDualParser Modal - Production Implementation
-function StudioraDualParserModal({ onClose, onComplete }) {
-  const [text, setText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [status, setStatus] = useState('');
-  const [error, setError] = useState('');
-  const [progress, setProgress] = useState([]);
-  const [results, setResults] = useState(null);
+// Add Course Modal
+function AddCourseModal({ onClose, onAdd }) {
+  const [formData, setFormData] = useState({
+    code: '',
+    name: '',
+    instructor: '',
+    semester: 'Spring 2025',
+    credits: '3'
+  });
 
-  const addProgress = (message, stage = 'info') => {
-    const timestamp = new Date().toLocaleTimeString();
-    setProgress(prev => [...prev, { timestamp, stage, message }]);
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (formData.code.trim() && formData.name.trim()) {
+      onAdd(formData);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-md w-full p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Add New Course</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">Course Code *</label>
+            <input
+              type="text"
+              value={formData.code}
+              onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg"
+              placeholder="e.g., NURS330"
+            />
+            <p className="text-xs text-gray-500 mt-1">Use official course codes for best results</p>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Course Name *</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg"
+              placeholder="e.g., Nursing of the Childbearing Family"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium mb-1">Instructor</label>
+            <input
+              type="text"
+              value={formData.instructor}
+              onChange={(e) => setFormData({ ...formData, instructor: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg"
+              placeholder="Professor Name"
+            />
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Semester</label>
+              <select
+                value={formData.semester}
+                onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option>Spring 2025</option>
+                <option>Summer 2025</option>
+                <option>Fall 2025</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Credits</label>
+              <input
+                type="number"
+                value={formData.credits}
+                onChange={(e) => setFormData({ ...formData, credits: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg"
+                min="1"
+                max="6"
+              />
+            </div>
+          </div>
+          
+          <div className="flex space-x-3 pt-4">
+            <button onClick={onClose} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button onClick={handleSubmit} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              Add Course
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Import Wizard Component
+function ImportWizard({ courses, onClose, onComplete }) {
+  const [currentStep, setCurrentStep] = useState(1);
+  const [importData, setImportData] = useState({
+    courseId: '',
+    documentType: '',
+    text: ''
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState([]);
+
+  const documentTypes = [
+    { id: 'canvas-modules', name: 'Canvas Modules Page', description: 'Copy/paste from Canvas modules page' },
+    { id: 'canvas-assignments', name: 'Canvas Assignments Page', description: 'Copy/paste from Canvas assignments list' },
+    { id: 'syllabus', name: 'Course Syllabus', description: 'Complete course syllabus document' },
+    { id: 'schedule', name: 'Course Schedule/Outline', description: 'Weekly schedule or course outline' },
+    { id: 'mixed', name: 'Mixed/Everything', description: 'Parse any type of content (less accurate)' }
+  ];
+
+  const handleNext = () => {
+    if (currentStep < 3) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
   };
 
   const handleParse = async () => {
-    if (!text.trim()) {
-      setError('Please paste your nursing course database');
-      return;
-    }
-    
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    if (!apiKey || apiKey.includes('your-openai-api-key')) {
-      setError('OpenAI API key not configured. Add VITE_OPENAI_API_KEY to .env.local');
-      return;
-    }
-    
     setIsLoading(true);
-    setError('');
     setProgress([]);
-    setResults(null);
-    setStatus('🎓 Initializing StudioraDualParser...');
+    
+    await Promise.resolve(); // Non-blocking
     
     try {
-      addProgress('Creating StudioraDualParser instance', 'init');
+      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+      if (!apiKey && importData.documentType !== 'mixed') {
+        throw new Error('OpenAI API key not found. Please check your .env.local file.');
+      }
       
-      const parser = new StudioraDualParser(apiKey, {
-        model: import.meta.env.VITE_AI_MODEL || 'gpt-4o',
-        timeout: parseInt(import.meta.env.VITE_AI_TIMEOUT) || 60000
+      const parser = new StudioraDualParser(apiKey);
+      const selectedCourse = courses.find(c => c.id === importData.courseId);
+      
+      const results = await parser.parse(importData.text, {
+        course: selectedCourse.code.toLowerCase().replace(/\s+/g, ''),
+        documentType: importData.documentType,
+        userCourses: courses,
+        useAI: apiKey ? true : false
+      }, (progressUpdate) => {
+        setProgress(prev => [...prev, {
+          stage: progressUpdate.stage,
+          message: progressUpdate.message,
+          timestamp: new Date().toLocaleTimeString()
+        }]);
       });
       
-      addProgress('Starting dual parsing: Regex + AI independent analysis', 'start');
-      
-      const finalResults = await parser.parse(text, 'auto', (progressUpdate) => {
-        setStatus(progressUpdate.message || 'Processing...');
-        addProgress(progressUpdate.message, progressUpdate.stage);
-      });
-      
-      addProgress(`✅ Parsing complete! Method: ${finalResults.metadata.method}`, 'success');
-      addProgress(`📊 Found ${finalResults.assignments.length} assignments`, 'success');
-      addProgress(`🎯 Confidence: ${Math.round((finalResults.metadata.confidence || 0) * 100)}%`, 'success');
-      
-      setResults(finalResults);
-      setStatus(`✅ SUCCESS: ${finalResults.assignments.length} assignments found via ${finalResults.metadata.method}`);
-      
-      // Auto-complete after 2 seconds
-      setTimeout(() => {
-        onComplete(finalResults);
-      }, 2000);
-      
+      onComplete(results, importData);
     } catch (error) {
-      const errorMsg = `❌ Parsing failed: ${error.message}`;
-      addProgress(errorMsg, 'error');
-      setError(errorMsg);
-      setStatus('❌ Parsing failed');
-      console.error('StudioraDualParser error:', error);
+      setProgress(prev => [...prev, {
+        stage: 'error',
+        message: `❌ Parsing failed: ${error.message}`,
+        timestamp: new Date().toLocaleTimeString()
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -498,134 +608,521 @@ function StudioraDualParserModal({ onClose, onComplete }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-        <div className="p-6 border-b border-gray-200">
+      <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+        <div className="p-6 border-b">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 flex items-center">
-                <Brain className="mr-2 h-6 w-6 text-blue-600" />
-                StudioraDualParser
-              </h2>
-              <p className="text-sm text-gray-600">
-                Independent Regex + AI parsing with intelligent reconciliation
-              </p>
+              <h2 className="text-xl font-semibold">Import Course Data</h2>
+              <p className="text-sm text-gray-600">Step {currentStep} of 3</p>
             </div>
-            <button 
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
-              disabled={isLoading}
-            >
-              ✕
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <X size={20} />
             </button>
           </div>
-        </div>
-        
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Input Section */}
-          <div>
-            <h3 className="font-medium mb-2 flex items-center">
-              <Upload className="mr-2 h-4 w-4" />
-              Course Database Input
-            </h3>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Paste your complete nursing course database here..."
-              className="w-full h-64 p-4 border border-gray-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono"
-              disabled={isLoading}
-            />
-            <div className="text-xs text-gray-500 mt-2">
-              Characters: {text.length.toLocaleString()}
-            </div>
-          </div>
           
-          {/* Progress Section */}
-          <div>
-            <h3 className="font-medium mb-2 flex items-center">
-              <Zap className="mr-2 h-4 w-4" />
-              Parsing Progress
-            </h3>
-            <div className="h-64 border border-gray-300 rounded-lg p-4 overflow-y-auto bg-gray-50 font-mono text-xs">
-              {progress.length === 0 ? (
-                <p className="text-gray-500">Progress will appear here...</p>
-              ) : (
-                progress.map((item, index) => (
-                  <div key={index} className={`mb-2 ${
-                    item.stage === 'error' ? 'text-red-600' :
-                    item.stage === 'success' ? 'text-green-600' :
-                    'text-gray-700'
-                  }`}>
-                    <span className="text-gray-500">{item.timestamp}</span>
-                    <span className="ml-2">[{item.stage}]</span>
-                    <span className="ml-2">{item.message}</span>
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="flex items-center mt-4 space-x-4">
+            {[1, 2, 3].map(step => (
+              <div key={step} className="flex items-center">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                  step === currentStep ? 'bg-blue-600 text-white' :
+                  step < currentStep ? 'bg-green-600 text-white' :
+                  'bg-gray-200 text-gray-600'
+                }`}>
+                  {step}
+                </div>
+                {step < 3 && <div className="w-12 h-px bg-gray-300 mx-2" />}
+              </div>
+            ))}
           </div>
         </div>
         
-        {/* Status and Results */}
-        <div className="px-6">
-          {status && (
-            <div className={`mb-4 p-3 rounded-lg ${
-              status.includes('SUCCESS') ? 'bg-green-50 border border-green-200' :
-              status.includes('failed') ? 'bg-red-50 border border-red-200' :
-              'bg-blue-50 border border-blue-200'
-            }`}>
-              <p className={`text-sm ${
-                status.includes('SUCCESS') ? 'text-green-800' :
-                status.includes('failed') ? 'text-red-800' :
-                'text-blue-800'
-              }`}>
-                {status}
-              </p>
+        <div className="p-6">
+          {currentStep === 1 && (
+            <div>
+              <h3 className="text-lg font-medium mb-4">Select Course</h3>
+              <div className="space-y-3">
+                {courses.map(course => (
+                  <label key={course.id} className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="course"
+                      value={course.id}
+                      checked={importData.courseId === course.id}
+                      onChange={(e) => setImportData({ ...importData, courseId: e.target.value })}
+                      className="mr-3"
+                    />
+                    <div>
+                      <div className="font-medium">{course.code}</div>
+                      <div className="text-sm text-gray-600">{course.name}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
           
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-800 text-sm">{error}</p>
+          {currentStep === 2 && (
+            <div>
+              <h3 className="text-lg font-medium mb-4">What type of document are you importing?</h3>
+              <div className="space-y-3">
+                {documentTypes.map(type => (
+                  <label key={type.id} className="flex items-start p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="radio"
+                      name="documentType"
+                      value={type.id}
+                      checked={importData.documentType === type.id}
+                      onChange={(e) => setImportData({ ...importData, documentType: e.target.value })}
+                      className="mr-3 mt-1"
+                    />
+                    <div>
+                      <div className="font-medium">{type.name}</div>
+                      <div className="text-sm text-gray-600">{type.description}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
           
-          {results && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <div className="text-green-800 text-sm">
-                <div className="font-medium">Parsing Complete!</div>
-                <div>Method: {results.metadata.method}</div>
-                <div>Assignments: {results.assignments.length}</div>
-                <div>Confidence: {Math.round((results.metadata.confidence || 0) * 100)}%</div>
+          {currentStep === 3 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-lg font-medium mb-4">Paste Your Content</h3>
+                <textarea
+                  value={importData.text}
+                  onChange={(e) => setImportData({ ...importData, text: e.target.value })}
+                  placeholder={`Paste your ${documentTypes.find(t => t.id === importData.documentType)?.name.toLowerCase()} here...`}
+                  className="w-full h-64 p-3 border rounded-lg text-sm font-mono resize-none"
+                  disabled={isLoading}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  {importData.text.length} characters
+                </div>
+              </div>
+              
+              <div>
+                <h3 className="text-lg font-medium mb-4">Progress</h3>
+                <div className="h-64 border rounded-lg p-3 overflow-y-auto bg-gray-50 text-xs font-mono">
+                  {progress.length === 0 ? (
+                    <p className="text-gray-500">Progress will appear here...</p>
+                  ) : (
+                    progress.map((item, idx) => (
+                      <div key={idx} className="mb-1">
+                        <span className="text-gray-500">[{item.timestamp}]</span>
+                        <span className={`ml-2 ${
+                          item.stage === 'error' ? 'text-red-600' :
+                          item.stage === 'complete' ? 'text-green-600' :
+                          'text-blue-600'
+                        }`}>
+                          {item.message}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           )}
         </div>
         
-        <div className="p-6 border-t border-gray-200 flex justify-end space-x-3">
+        <div className="p-6 border-t flex justify-between">
           <button
-            onClick={onClose}
-            disabled={isLoading}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            onClick={handlePrev}
+            disabled={currentStep === 1}
+            className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
           >
-            {results ? 'Close' : 'Cancel'}
+            Previous
           </button>
+          
+          <div className="flex space-x-3">
+            <button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            
+            {currentStep < 3 ? (
+              <button
+                onClick={handleNext}
+                disabled={
+                  (currentStep === 1 && !importData.courseId) ||
+                  (currentStep === 2 && !importData.documentType)
+                }
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                onClick={handleParse}
+                disabled={!importData.text.trim() || isLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <span>Parsing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Brain size={16} />
+                    <span>Parse Content</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Data Manager Modal
+function DataManagerModal({ appData, onClose, onImport, onExport }) {
+  const [importFile, setImportFile] = useState(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type === 'application/json') {
+      setImportFile(file);
+      setImportError('');
+    } else {
+      setImportError('Please select a valid JSON file');
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    
+    setIsImporting(true);
+    setImportError('');
+    
+    try {
+      const importedData = await DataManager.importData(importFile);
+      onImport(importedData);
+    } catch (error) {
+      setImportError(error.message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const dataStats = {
+    courses: appData.courses.length,
+    assignments: appData.assignments.length,
+    studyBlocks: appData.studyBlocks.length,
+    storageSize: new Blob([JSON.stringify(appData)]).size
+  };
+
+  const formatBytes = (bytes) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold">Data Management</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="mb-6">
+          <h3 className="font-medium mb-3">Current Data</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-gray-50 p-3 rounded">
+              <div className="text-2xl font-bold text-blue-600">{dataStats.courses}</div>
+              <div className="text-sm text-gray-600">Courses</div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded">
+              <div className="text-2xl font-bold text-green-600">{dataStats.assignments}</div>
+              <div className="text-sm text-gray-600">Assignments</div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded">
+              <div className="text-2xl font-bold text-purple-600">{dataStats.studyBlocks}</div>
+              <div className="text-sm text-gray-600">Study Blocks</div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded">
+              <div className="text-2xl font-bold text-orange-600">{formatBytes(dataStats.storageSize)}</div>
+              <div className="text-sm text-gray-600">Storage Used</div>
+            </div>
+          </div>
+        </div>
+        
+        <div className="mb-6">
+          <h3 className="font-medium mb-3">Export Data</h3>
+          <p className="text-sm text-gray-600 mb-3">
+            Download all your data as a backup file. You can import this file later or on another device.
+          </p>
           <button
-            onClick={handleParse}
-            disabled={!text.trim() || isLoading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+            onClick={onExport}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 flex items-center justify-center space-x-2"
           >
-            {isLoading ? (
+            <Download size={16} />
+            <span>Export All Data</span>
+          </button>
+        </div>
+        
+        <div>
+          <h3 className="font-medium mb-3">Import Data</h3>
+          <p className="text-sm text-gray-600 mb-3">
+            Upload a previously exported data file. This will replace all current data.
+          </p>
+          
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 mb-3">
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleFileSelect}
+              className="w-full"
+              disabled={isImporting}
+            />
+          </div>
+          
+          {importError && (
+            <div className="mb-3 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+              {importError}
+            </div>
+          )}
+          
+          <button
+            onClick={handleImport}
+            disabled={!importFile || isImporting}
+            className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center space-x-2"
+          >
+            {isImporting ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Parsing...</span>
+                <span>Importing...</span>
               </>
             ) : (
               <>
-                <Brain size={16} />
-                <span>Parse with Studiora</span>
+                <Upload size={16} />
+                <span>Import Data File</span>
               </>
             )}
           </button>
+        </div>
+        
+        <div className="mt-6 pt-4 border-t">
+          <div className="flex items-center space-x-2 text-xs text-gray-500">
+            <AlertCircle size={14} />
+            <span>Importing will replace all current data. Export first to create a backup.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Course Dashboard Component
+function CourseDashboard({ course, assignments, completedAssignments, onToggleAssignment, onImport }) {
+  const stats = {
+    total: assignments.length,
+    completed: assignments.filter(a => completedAssignments.has(a.id)).length,
+    dueThisWeek: assignments.filter(a => {
+      const dueDate = new Date(a.date);
+      const weekFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      return dueDate <= weekFromNow && dueDate >= new Date() && !completedAssignments.has(a.id);
+    }).length
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h2 className="text-xl font-semibold">{course.code}</h2>
+            <p className="text-gray-600">{course.name}</p>
+          </div>
+          <button
+            onClick={onImport}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
+          >
+            <Upload size={16} />
+            <span>Import Data</span>
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+            <div className="text-sm text-blue-700">Total Assignments</div>
+          </div>
+          <div className="bg-green-50 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+            <div className="text-sm text-green-700">Completed</div>
+          </div>
+          <div className="bg-orange-50 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-orange-600">{stats.dueThisWeek}</div>
+            <div className="text-sm text-orange-700">Due This Week</div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-4 border-b">
+          <h3 className="font-semibold">Assignments</h3>
+        </div>
+        <div className="p-4">
+          {assignments.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <FileText className="mx-auto h-12 w-12 text-gray-300" />
+              <p className="mt-2">No assignments imported yet</p>
+              <button
+                onClick={onImport}
+                className="mt-2 text-blue-600 hover:text-blue-800"
+              >
+                Import course data to get started
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {assignments
+                .sort((a, b) => new Date(a.date) - new Date(b.date))
+                .map(assignment => (
+                  <AssignmentCard
+                    key={assignment.id}
+                    assignment={assignment}
+                    isCompleted={completedAssignments.has(assignment.id)}
+                    onToggle={() => onToggleAssignment(assignment.id)}
+                  />
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Assignment Card Component
+function AssignmentCard({ assignment, isCompleted, onToggle }) {
+  const isOverdue = new Date(assignment.date) < new Date() && !isCompleted;
+  const isDueSoon = !isOverdue && new Date(assignment.date) <= new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+
+  const getTypeIcon = (type) => {
+    const icons = {
+      'reading': '📖', 'quiz': '❓', 'exam': '📝', 'assignment': '✏️',
+      'discussion': '💬', 'clinical': '🏥', 'lab': '🔬', 'project': '📊',
+      'paper': '📄', 'simulation': '🎯', 'preparation': '📚'
+    };
+    return icons[type] || '📋';
+  };
+
+  return (
+    <div className={`border rounded-lg p-4 transition-all ${
+      isCompleted ? 'bg-gray-50 opacity-75' : 
+      isOverdue ? 'bg-red-50 border-red-200' :
+      isDueSoon ? 'bg-yellow-50 border-yellow-200' :
+      'bg-white hover:shadow-md'
+    }`}>
+      
+      <div className="flex items-start space-x-3">
+        <input
+          type="checkbox"
+          checked={isCompleted}
+          onChange={onToggle}
+          className="mt-1 h-4 w-4 text-blue-600 rounded"
+        />
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center space-x-2 mb-1">
+            <span className="text-lg">{getTypeIcon(assignment.type)}</span>
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+              {assignment.type}
+            </span>
+            {assignment.confidence && (
+              <span className="text-xs text-gray-500">
+                {Math.round(assignment.confidence * 100)}%
+              </span>
+            )}
+          </div>
+          
+          <h4 className={`font-medium text-sm ${isCompleted ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+            {assignment.text}
+          </h4>
+          
+          <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+            <span className={isOverdue ? 'text-red-600 font-medium' : ''}>
+              {isOverdue ? 'OVERDUE - ' : ''}
+              {assignment.date ? `Due: ${new Date(assignment.date).toLocaleDateString()}` : 'No due date'}
+            </span>
+            {assignment.hours && <span>{assignment.hours}h</span>}
+            {assignment.points && <span>{assignment.points} pts</span>}
+          </div>
+          
+          {assignment.source && (
+            <div className="mt-1">
+              <span className={`text-xs px-1.5 py-0.5 rounded ${
+                assignment.source.includes('ai') ? 'bg-purple-100 text-purple-700' :
+                assignment.source.includes('document-specific') ? 'bg-green-100 text-green-700' :
+                assignment.source.includes('regex') ? 'bg-blue-100 text-blue-700' :
+                'bg-gray-100 text-gray-700'
+              }`}>
+                {assignment.source}
+              </span>
+            </div>
+          )}
+          
+          {assignment.extractionReason && (
+            <div className="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+              💡 {assignment.extractionReason}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Calendar View Component
+function CalendarView({ course, assignments, studyBlocks }) {
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h2 className="text-xl font-semibold mb-4">{course.code} Calendar</h2>
+      <div className="text-center py-12 text-gray-500">
+        <Calendar className="mx-auto h-12 w-12 text-gray-300" />
+        <p className="mt-4">Calendar view coming soon</p>
+        <p className="text-sm">Will show assignments and study blocks on calendar</p>
+      </div>
+    </div>
+  );
+}
+
+// Data View Component
+function DataView({ appData }) {
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h2 className="text-xl font-semibold mb-4">Data Overview</h2>
+      <div className="space-y-4">
+        <div>
+          <h3 className="font-medium">Courses ({appData.courses.length})</h3>
+          <div className="mt-2 space-y-1">
+            {appData.courses.map(course => (
+              <div key={course.id} className="text-sm text-gray-600">
+                {course.code} - {course.name}
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <div>
+          <h3 className="font-medium">Recent Parsing History</h3>
+          <div className="mt-2 space-y-1">
+            {appData.parsingHistory.slice(-5).map(history => (
+              <div key={history.id} className="text-sm text-gray-600">
+                {new Date(history.timestamp).toLocaleDateString()} - {history.assignmentCount} assignments from {history.documentType}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -633,4 +1130,3 @@ function StudioraDualParserModal({ onClose, onComplete }) {
 }
 
 export default StudioraNursingPlanner;
-EOF

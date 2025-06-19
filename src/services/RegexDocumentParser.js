@@ -578,6 +578,8 @@ export class RegexDocumentParser {
       'renal': 'adulthealth',
       'musculoskeletal': 'adulthealth',
       'neurological': 'adulthealth',
+      'nurs 310': 'adulthealth',
+      'nurs310': 'adulthealth',
       
       'nclex': 'nclex',
       'hesi': 'nclex',
@@ -596,24 +598,26 @@ export class RegexDocumentParser {
       'alzheimer': 'geronto'
     };
 
-    const lowerText = text.toLowerCase();
+  const lowerText = text.toLowerCase();
+    console.log('Inferring course from:', lowerText.substring(0, 100)); // Debug log
     
     for (const [keyword, course] of Object.entries(courseMap)) {
       if (lowerText.includes(keyword)) {
+        console.log(`Matched keyword "${keyword}" -> course "${course}"`); // Debug log
         return course;
       }
     }
 
-    // Check for NURS course codes
+    // Check course codes
     const courseCodeMatch = text.match(/(?:NURS|NUR|NSG)\s*(\d{3,4})/i);
     if (courseCodeMatch) {
       const courseNum = parseInt(courseCodeMatch[1]);
-      if (courseNum >= 330 && courseNum <= 339) return 'obgyn';
+      console.log(`Course number found: ${courseNum}`); // Debug log
       if (courseNum >= 310 && courseNum <= 319) return 'adulthealth';
-      if (courseNum >= 335 && courseNum <= 339) return 'nclex';
-      if (courseNum >= 315 && courseNum <= 325) return 'geronto';
+      // ... other ranges
     }
 
+    console.log('No course match found, returning unknown'); // Debug log
     return 'unknown';
   }
 
