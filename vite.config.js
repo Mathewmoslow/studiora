@@ -1,12 +1,9 @@
-// vite.config.js
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // GitHub Pages deployment configuration
-  base: process.env.NODE_ENV === 'production' ? '/studiora/' : '/',
+  base: '/', // Changed from '/studiora/' to '/'
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
