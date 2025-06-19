@@ -205,7 +205,7 @@ Respond with JSON:
   ]
 }`;
 
-      const result = await this.aiService.parse(prompt, 'json');
+      const result = await this.aiService.makeRequest(prompt, 'json');
       
       return {
         assignments: (result.assignments || []).map((a, idx) => ({
@@ -261,7 +261,7 @@ Respond with JSON:
   "invalidIds": ["id1", "id2"]
 }`;
 
-      const result = await this.aiService.parse(prompt, 'json');
+      const result = await this.aiService.makeRequest(prompt, 'json');
       
       // Apply validation results
       const validatedAssignments = regexResults.assignments.map(assignment => {
