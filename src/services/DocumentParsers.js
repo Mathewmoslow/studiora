@@ -1,5 +1,5 @@
 // src/services/DocumentParsers.js
-// Enhanced flexible parsers that adapt to any Canvas format
+// ENHANCED VERSION: Complete with all parser classes
 
 // Base Parser Class - shared functionality
 class BaseCanvasParser {
@@ -106,6 +106,40 @@ class BaseCanvasParser {
     return null;
   }
 
+  // Parse time strings
+  extractTime(timeStr) {
+    if (!timeStr) return null;
+    
+    const timeMatch = timeStr.match(this.patterns.time);
+    if (timeMatch) {
+      // Handle both 12:30pm and 12pm formats
+      const hour = timeMatch[1] || timeMatch[5];
+      const minute = timeMatch[2] || '00';
+      const ampm = (timeMatch[4] || timeMatch[6] || 'PM').toUpperCase();
+      return `${hour}:${minute} ${ampm}`;
+    }
+    
+    return null;
+  }
+
+  // Extract points from various formats
+  extractPoints(text) {
+    if (!text) return 0;
+    
+    const pointsMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:pts?|points?)/i);
+    if (pointsMatch) {
+      return parseFloat(pointsMatch[1]);
+    }
+    
+    // Check for score format (e.g., "35 / 50")
+    const scoreMatch = text.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+    if (scoreMatch) {
+      return parseFloat(scoreMatch[2]); // Return total possible points
+    }
+    
+    return 0;
+  }
+
   // Determine assignment type from text
   determineType(text) {
     if (!text) return 'assignment';
@@ -172,229 +206,7 @@ class BaseCanvasParser {
     return Math.round(hours * 10) / 10;
   }
 
-  // Extract points from various formats
-  extractPoints(text) {
-    if (!text) return 0;
-    
-    const pointsMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:pts?|points?)/i);
-    if (pointsMatch) {
-      return parseFloat(pointsMatch[1]);
-    }
-    
-    // Check for score format (e.g., "35 / 50")
-    const scoreMatch = text.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
-    if (scoreMatch) {
-      return parseFloat(scoreMatch[2]); // Return total possible points
-    }
-    
-    return 0;
-  }
-
-  // Generic extraction of time
-  extractTime(text) {
-    if (!text) return null;
-    
-    const timeMatch = text.match(this.patterns.time);
-    if (timeMatch) {
-      // Handle both 12:30pm and 12pm formats
-      const hour = timeMatch[1] || timeMatch[5];
-      const minute = timeMatch[2] || '00';
-      const ampm = (timeMatch[4] || timeMatch[6] || 'PM').toUpperCase();
-      return `${hour}:${minute} ${ampm}`;
-    }
-    
-    return null;
-  }
-}
-
-// Canvas Modules Page Parser
-export class CanvasModulesParser extends BaseCanvasParser {
-  parse(text, course = null) {
-    const assignments = [];
-    const modules = [];
-    const events = [];
-    
-    // Extract course info if not provided
-    const courseInfo = course || this.extractCourseInfo(text);
-    
-    // Clean text
-    const cleanedText = text
-      .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-    
-    // Pattern for week/module sections
-    const sectionPattern = /(?:Week|Module|Unit)\s+(\d+)(?:\s*[-:]\s*(.+?))?(?=\n|$)/gi;
-    const sections = this.extractSections(cleanedText, sectionPattern);
-    
-    // Process each section
-    sections.forEach(section => {
-      const sectionAssignments = this.parseSectionContent(section, courseInfo);
-      assignments.push(...sectionAssignments);
-      
-      if (section.type === 'module') {
-        modules.push({
-          number: section.number,
-          title: section.title,
-          course: courseInfo.code
-        });
-      }
-    });
-    
-    // Also look for standalone assignments
-    const standaloneAssignments = this.parseStandaloneAssignments(cleanedText, courseInfo);
-    assignments.push(...standaloneAssignments);
-    
-    // Remove duplicates
-    const uniqueAssignments = this.deduplicateAssignments(assignments);
-    
-    return {
-      assignments: uniqueAssignments,
-      modules,
-      events,
-      course: courseInfo,
-      metadata: {
-        documentType: 'canvas-modules',
-        totalAssignments: uniqueAssignments.length,
-        sectionsFound: sections.length
-      }
-    };
-  }
-
-  extractSections(text, pattern) {
-    const sections = [];
-    const matches = [...text.matchAll(pattern)];
-    
-    matches.forEach((match, index) => {
-      const startPos = match.index;
-      const endPos = index < matches.length - 1 ? matches[index + 1].index : text.length;
-      
-      sections.push({
-        type: match[0].toLowerCase().includes('week') ? 'week' : 'module',
-        number: parseInt(match[1]),
-        title: match[2] ? match[2].trim() : `Section ${match[1]}`,
-        content: text.substring(startPos, endPos),
-        rawHeader: match[0]
-      });
-    });
-    
-    return sections;
-  }
-
-  parseSectionContent(section, courseInfo) {
-    const assignments = [];
-    
-    // Patterns for Canvas module content
-    const patterns = [
-      // Type\nTitle\nDate\nPoints format
-      /^(Quiz|Assignment|Discussion|Lab|Clinical|Test|Exam)\s*\n(.+?)\n(.*?)(\d+\s*pts?)?$/gm,
-      
-      // Title\nDate\nPoints format
-      /^([^\n]+)\n((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n]+)\n(\d+\s*pts?)$/gm,
-      
-      // Assignment: Title (Due: Date) format
-      /(?:Assignment|Quiz|Test|Exam|Discussion):\s*(.+?)(?:\s*\(Due:\s*([^)]+)\))?/gi,
-      
-      // Generic "Due by" pattern
-      /(.+?)\s+(?:due|Due|DUE)\s+(?:by|on|at)\s+([^\n,;]+)/gi
-    ];
-    
-    patterns.forEach(pattern => {
-      const matches = [...section.content.matchAll(pattern)];
-      
-      matches.forEach(match => {
-        const assignment = this.createAssignment(match, section, courseInfo);
-        if (assignment && !this.isIgnored(assignment.title)) {
-          assignments.push(assignment);
-        }
-      });
-    });
-    
-    return assignments;
-  }
-
-  parseStandaloneAssignments(text, courseInfo) {
-    const assignments = [];
-    
-    // Pattern for assignments not in sections
-    const standalonePattern = /^([^\n]+)\n((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n]+)\n(\d+\s*pts?)$/gm;
-    const matches = [...text.matchAll(standalonePattern)];
-    
-    matches.forEach(match => {
-      // Skip if this looks like a section header
-      if (match[1].match(/(?:Week|Module|Unit)\s+\d+/i)) return;
-      
-      const assignment = {
-        id: `canvas_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        title: this.cleanTitle(match[1]),
-        type: this.determineType(match[1]),
-        dueDate: this.parseDate(match[2]),
-        dueTime: this.extractTime(match[2]) || '11:59 PM',
-        points: this.extractPoints(match[3]),
-        course: courseInfo.code,
-        courseName: courseInfo.name,
-        estimatedHours: 0, // Will calculate below
-        source: 'canvas-modules',
-        extractedFrom: match[0]
-      };
-      
-      assignment.estimatedHours = this.estimateHours(assignment.type, assignment.title, assignment.points);
-      
-      if (!this.isIgnored(assignment.title)) {
-        assignments.push(assignment);
-      }
-    });
-    
-    return assignments;
-  }
-
-  createAssignment(match, section, courseInfo) {
-    let title, type, dueDate, points;
-    
-    // Determine what we extracted based on match groups
-    if (match[0].includes('\n')) {
-      // Multi-line format
-      if (match[1] && match[1].match(/^(Quiz|Assignment|Discussion|Lab|Clinical|Test|Exam)$/i)) {
-        type = match[1].toLowerCase();
-        title = match[2];
-        dueDate = match[3];
-        points = match[4];
-      } else {
-        title = match[1];
-        dueDate = match[2];
-        points = match[3];
-        type = this.determineType(title);
-      }
-    } else {
-      // Single line format
-      title = match[1];
-      dueDate = match[2];
-      type = this.determineType(title);
-    }
-    
-    if (!title || title.length < 3) return null;
-    
-    const assignment = {
-      id: `canvas_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: this.cleanTitle(title),
-      type: type,
-      dueDate: this.parseDate(dueDate),
-      dueTime: this.extractTime(dueDate) || '11:59 PM',
-      points: this.extractPoints(points || match[0]),
-      week: section ? section.number : null,
-      weekTitle: section ? section.title : null,
-      course: courseInfo.code,
-      courseName: courseInfo.name,
-      estimatedHours: 0,
-      source: 'canvas-modules',
-      extractedFrom: match[0]
-    };
-    
-    assignment.estimatedHours = this.estimateHours(assignment.type, assignment.title, assignment.points);
-    
-    return assignment;
-  }
-
+  // Clean title
   cleanTitle(title) {
     if (!title) return '';
     
@@ -406,6 +218,7 @@ export class CanvasModulesParser extends BaseCanvasParser {
       .trim();
   }
 
+  // Check if should be ignored
   isIgnored(title) {
     const ignoredPatterns = [
       /^(Page|Attachment|External Tool|Folder)$/i,
@@ -433,6 +246,7 @@ export class CanvasModulesParser extends BaseCanvasParser {
     return ignoredPatterns.some(pattern => pattern.test(title));
   }
 
+  // Deduplicate assignments
   deduplicateAssignments(assignments) {
     const seen = new Map();
     
@@ -457,8 +271,244 @@ export class CanvasModulesParser extends BaseCanvasParser {
   }
 }
 
+// Canvas Modules Parser
+class CanvasModulesParser extends BaseCanvasParser {
+  parse(text, course) {
+    const assignments = [];
+    const modules = [];
+    
+    // Canvas module structure: "Module X: Title"
+    const moduleRegex = /Module\s+(\d+)[:.]?\s*(.+?)(?=Module\s+\d+|$)/gis;
+    
+    let moduleMatch;
+    while ((moduleMatch = moduleRegex.exec(text)) !== null) {
+      const moduleNum = moduleMatch[1];
+      const moduleTitle = moduleMatch[2].trim();
+      const moduleContent = moduleMatch[0];
+      
+      modules.push({
+        number: parseInt(moduleNum),
+        title: moduleTitle,
+        course: course
+      });
+      
+      // Extract assignments within module - ENHANCED patterns
+      const assignmentPatterns = [
+        // Standard assignment format
+        /(?:Assignment|Quiz|Discussion|Reading|Video|Lab)[:.\s]*(.+?)(?:\n|$)/gi,
+        // Points format: "Assignment Name (10 pts) Due: Date"
+        /(.+?)\s*\((\d+)\s*pts?\)\s*Due:\s*([^\n]+)/gi,
+        // Due format: "Due Date: Assignment"
+        /Due\s+([^\n]+?):\s*([^\n]+)/gi,
+        // Action format: "Complete/Submit/Read X by Date"
+        /(?:Complete|Submit|Read|Watch|Review)\s+(.+?)(?:\s+by\s+([^\n]+))?/gi,
+        // Week-based assignments
+        /Week\s+\d+\s*[:-]\s*(.+?)(?:\s*Due:\s*([^\n]+))?/gi,
+        // Bullet points
+        /^\s*[•\-*]\s*(.+?)(?:\s*Due:\s*([^\n]+))?$/gm,
+        // Module assignments with "OB Clinical Orientation" format
+        /^([^\n]+?)\s*"([^"]+)"\s*(?:Due:\s*([^\n]+))?$/gm
+      ];
+      
+      for (const pattern of assignmentPatterns) {
+        let assignMatch;
+        pattern.lastIndex = 0;
+        while ((assignMatch = pattern.exec(moduleContent)) !== null) {
+          const text = assignMatch[1]?.trim() || assignMatch[2]?.trim();
+          const points = assignMatch[2] && !isNaN(assignMatch[2]) ? assignMatch[2] : null;
+          const dueDate = assignMatch[3] || assignMatch[2] || assignMatch[1];
+          
+          if (text && text.length > 3 && !assignments.some(a => a.text === text)) {
+            assignments.push({
+              id: `canvas_${Date.now()}_${assignments.length}`,
+              text,
+              points: points ? parseInt(points) : null,
+              date: this.parseCanvasDate(dueDate),
+              type: this.determineType(text),
+              hours: this.estimateHours(this.determineType(text), text, points),
+              course: course,
+              moduleNumber: parseInt(moduleNum),
+              moduleTitle: moduleTitle,
+              source: 'canvas-modules',
+              confidence: 0.9,
+              extractedFrom: assignMatch[0]
+            });
+          }
+        }
+      }
+    }
+    
+    return { assignments, modules };
+  }
+  
+  parseCanvasDate(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    
+    // Canvas formats: "Jan 15 at 11:59pm", "Monday, Jan 15", "May 15", etc.
+    const patterns = [
+      { regex: /(\w+)\s+(\d{1,2})\s+at\s+(\d{1,2}):(\d{2})\s*(am|pm)/i, type: 'datetime' },
+      { regex: /(\w+),?\s+(\w+)\s+(\d{1,2})/i, type: 'daymonthdate' },
+      { regex: /(\w+)\s+(\d{1,2})/i, type: 'monthdate' },
+      { regex: /(\d{1,2})\/(\d{1,2})/i, type: 'numeric' }
+    ];
+    
+    try {
+      for (const { regex, type } of patterns) {
+        const match = dateStr.match(regex);
+        if (match) {
+          let processedDate;
+          
+          switch (type) {
+            case 'datetime':
+            case 'daymonthdate':
+            case 'monthdate':
+              processedDate = dateStr + ', 2025';
+              break;
+            case 'numeric':
+              processedDate = match[0] + '/2025';
+              break;
+          }
+          
+          const date = new Date(processedDate);
+          if (!isNaN(date.getTime())) {
+            return date.toISOString().split('T')[0];
+          }
+        }
+      }
+      
+      // Try parsing as-is with year
+      const dateWithYear = dateStr.includes('202') ? dateStr : dateStr + ', 2025';
+      const date = new Date(dateWithYear);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    } catch (e) {
+      console.warn('Failed to parse Canvas date:', dateStr);
+    }
+    
+    return null;
+  }
+}
+
+// Canvas Assignments Page Parser - ENHANCED for real Canvas format
+class CanvasAssignmentsParser extends BaseCanvasParser {
+  parse(text, course) {
+    const assignments = [];
+    
+    // Enhanced patterns for Canvas assignments page
+    const patterns = [
+      // Canvas assignment list format with type prefix
+      /^(Assignment|Quiz|Test|Exam|Project|Discussion|Lab|Clinical)\n([^\n]+)\n(?:Closed\s*)?\n?(?:Not available until[^\n]+\n)?(?:Due\s+)?(\w+\s+\d{1,2}\s+(?:at|by)\s+\d{1,2}(?::\d{2})?(?:am|pm)?)[^\n]*\n([\d.-]+)\/([\d.]+)\s*pts/gm,
+      
+      // Past/Upcoming assignments section items
+      /^([^\n]+)\n(?:Quizzes and Assignments|[^\n]+)?\n(?:Due\s+)?(\w+\s+\d{1,2}\s+(?:at|by)\s+\d{1,2}(?::\d{2})?(?:am|pm)?)[^\n]*\n([\d.-]+)\/([\d.]+)\s*pts/gm,
+      
+      // Table format: "Assignment Name    Due Date    Points"
+      /^([^\t\n]+?)\s{2,}(\w+\s+\d{1,2}(?:,?\s+\d{4})?)\s{2,}(\d+)\s*(?:pts?|points?)?$/gm,
+      
+      // List format with Due: prefix
+      /^(.+?)\s*Due:\s*(\w+\s+\d{1,2}(?:,?\s+\d{4})?)\s*\((\d+)\s*(?:pts?|points?)\)/gm,
+      
+      // Score format for completed assignments
+      /^([^\n]+)\n[^\n]+\n[^\n]+\n(?:Click to test a different score)?([\d.]+)\s*\/\s*([\d.]+)/gm
+    ];
+    
+    const processedAssignments = new Set();
+    
+    for (const pattern of patterns) {
+      let match;
+      pattern.lastIndex = 0;
+      while ((match = pattern.exec(text)) !== null) {
+        let assignmentText, dueDate, points, score;
+        
+        if (match.length === 6) {
+          // Type-prefixed format
+          const type = match[1];
+          assignmentText = match[2].trim();
+          dueDate = match[3].trim();
+          score = match[4];
+          points = match[5];
+        } else if (match.length === 5) {
+          // Standard format
+          assignmentText = match[1].trim();
+          dueDate = match[2].trim();
+          score = match[3];
+          points = match[4];
+        } else if (match.length === 4) {
+          // Other formats
+          assignmentText = match[1].trim();
+          dueDate = match[2].trim();
+          points = match[3];
+        }
+        
+        // Skip if already processed or too short
+        if (!assignmentText || assignmentText.length < 3 || processedAssignments.has(assignmentText)) {
+          continue;
+        }
+        
+        processedAssignments.add(assignmentText);
+        
+        assignments.push({
+          id: `assignment_${Date.now()}_${assignments.length}`,
+          text: assignmentText,
+          date: this.parseDate(dueDate),
+          points: points ? parseFloat(points) : null,
+          score: score && score !== '-' ? parseFloat(score) : null,
+          completed: score && score !== '-',
+          type: this.determineType(assignmentText),
+          hours: this.estimateHours(this.determineType(assignmentText), assignmentText, points),
+          course: course || this.inferCourse(assignmentText),
+          source: 'canvas-assignments',
+          confidence: 0.85,
+          extractedFrom: match[0]
+        });
+      }
+    }
+    
+    // Also check for dropbox assignments without points
+    const dropboxPattern = /^([^\n]+(?:Dropbox|dropbox))\n(?!.*\d+\s*pts)/gm;
+    let dropboxMatch;
+    while ((dropboxMatch = dropboxPattern.exec(text)) !== null) {
+      const assignmentText = dropboxMatch[1].trim();
+      if (!processedAssignments.has(assignmentText)) {
+        assignments.push({
+          id: `dropbox_${Date.now()}_${assignments.length}`,
+          text: assignmentText,
+          type: 'assignment',
+          points: 0,
+          course: course || this.inferCourse(assignmentText),
+          source: 'canvas-dropbox',
+          confidence: 0.8,
+          extractedFrom: dropboxMatch[0]
+        });
+      }
+    }
+    
+    return { assignments, modules: [] };
+  }
+  
+  inferCourse(text) {
+    // Course code patterns
+    const courseMatch = text.match(/\b(NURS|NUR|NSG)\s*(\d{3,4})\b/i);
+    if (courseMatch) {
+      const courseNum = parseInt(courseMatch[2]);
+      if (courseNum === 330) return 'obgyn';
+      if (courseNum === 310) return 'adulthealth';
+      if (courseNum === 240) return 'mentalhealth';
+      if (courseNum === 315) return 'geronto';
+    }
+    
+    // Keywords
+    if (/\b(childbearing|maternal|ob|pregnancy|postpartum|newborn)\b/i.test(text)) return 'obgyn';
+    if (/\b(adult|cardiac|respiratory|renal)\b/i.test(text)) return 'adulthealth';
+    if (/\b(mental|psych|psychiatric)\b/i.test(text)) return 'mentalhealth';
+    
+    return null;
+  }
+}
+
 // Canvas Grades Page Parser
-export class CanvasGradesParser extends BaseCanvasParser {
+class CanvasGradesParser extends BaseCanvasParser {
   parse(text, course = null) {
     const assignments = [];
     const courseInfo = course || this.extractCourseInfo(text);
@@ -547,536 +597,8 @@ export class CanvasGradesParser extends BaseCanvasParser {
   }
 }
 
-// Canvas Assignments Page Parser
-export class CanvasAssignmentsParser extends BaseCanvasParser {
-  parse(text, course = null) {
-    const assignments = [];
-    const courseInfo = course || this.extractCourseInfo(text);
-    
-    // Clean and normalize text
-    const cleanedText = text
-      .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-    
-    // Patterns for Canvas assignments page
-    const patterns = {
-      // Assignment/Quiz blocks with various states
-      assignmentBlock: /^(Assignment|Quiz)\s*\n(.+?)(?:\n(?:Not available until|Closed|Due).*?)?(?:\n(?:Due\s+)?([^\n]+?)(?:\s+at\s+([^\n]+?))?)?\n([\d.]+(?:\s*\/\s*[\d.]+)?)\s*pts/gm,
-      
-      // Upcoming/Past assignment pattern
-      statusAssignment: /^(.+?)\n(?:Due\s+)?([^\n]+\s+at\s+[^\n]+)\n([\d.]+\/[\d.]+)\s*pts.*?Score:\s*([\d.]+)\s*out of\s*([\d.]+)/gm,
-      
-      // Simple assignment pattern
-      simpleAssignment: /^(.+?)\n(?:-\/(\d+)\s*pts|(\d+)\/(\d+)\s*pts)/gm,
-      
-      // Assignment with availability restrictions
-      restrictedAssignment: /^(Assignment|Quiz)\s*\n(.+?)\n(?:Not available until\s+)?([^\n]+)\s+at\s+([^\n]+)\s+([^\n]+)\s+at\s+([^\n]+)\n(?:Due\s+)?([^\n]+)\s+at\s+([^\n]+)\s+([^\n]+)\s+at\s+([^\n]+)\n([\d.-]+)\/(\d+)\s*pts/gm
-    };
-    
-    // Look for section headers
-    const sections = this.extractAssignmentSections(cleanedText);
-    
-    // Process each section
-    sections.forEach(section => {
-      const sectionAssignments = this.parseAssignmentSection(section, courseInfo);
-      assignments.push(...sectionAssignments);
-    });
-    
-    // Also parse without sections for flat lists
-    Object.entries(patterns).forEach(([patternName, pattern]) => {
-      const matches = [...cleanedText.matchAll(pattern)];
-      
-      matches.forEach(match => {
-        const assignment = this.createAssignmentFromPattern(match, patternName, courseInfo);
-        if (assignment && !this.isDuplicateAssignment(assignment, assignments)) {
-          assignments.push(assignment);
-        }
-      });
-    });
-    
-    return {
-      assignments: this.deduplicateAssignments(assignments),
-      course: courseInfo,
-      metadata: {
-        documentType: 'canvas-assignments',
-        totalAssignments: assignments.length,
-        sections: sections.map(s => s.name)
-      }
-    };
-  }
-  
-  extractAssignmentSections(text) {
-    const sections = [];
-    const sectionPattern = /^\s*(Upcoming Assignments|Past Assignments|Undated Assignments)\s*$/gm;
-    const matches = [...text.matchAll(sectionPattern)];
-    
-    matches.forEach((match, index) => {
-      const startPos = match.index + match[0].length;
-      const endPos = index < matches.length - 1 ? matches[index + 1].index : text.length;
-      
-      sections.push({
-        name: match[1].trim(),
-        content: text.substring(startPos, endPos),
-        status: this.inferSectionStatus(match[1])
-      });
-    });
-    
-    // If no sections found, treat entire text as one section
-    if (sections.length === 0) {
-      sections.push({
-        name: 'All Assignments',
-        content: text,
-        status: 'mixed'
-      });
-    }
-    
-    return sections;
-  }
-  
-  inferSectionStatus(sectionName) {
-    const lower = sectionName.toLowerCase();
-    if (lower.includes('upcoming')) return 'upcoming';
-    if (lower.includes('past')) return 'past';
-    if (lower.includes('undated')) return 'undated';
-    return 'unknown';
-  }
-  
-  parseAssignmentSection(section, courseInfo) {
-    const assignments = [];
-    const lines = section.content.split('\n');
-    
-    let i = 0;
-    while (i < lines.length) {
-      const line = lines[i].trim();
-      
-      // Check if this is an assignment/quiz indicator
-      if (line === 'Assignment' || line === 'Quiz') {
-        const assignment = this.parseAssignmentBlock(lines, i, section, courseInfo);
-        if (assignment) {
-          assignments.push(assignment);
-          i += 5; // Skip processed lines
-        } else {
-          i++;
-        }
-      } else {
-        i++;
-      }
-    }
-    
-    return assignments;
-  }
-  
-  parseAssignmentBlock(lines, startIndex, section, courseInfo) {
-    if (startIndex + 2 >= lines.length) return null;
-    
-    const type = lines[startIndex].trim().toLowerCase();
-    const title = lines[startIndex + 1].trim();
-    
-    // Look for due date and points in next few lines
-    let dueDate = null;
-    let dueTime = null;
-    let points = 0;
-    let status = section.status;
-    let availableDate = null;
-    
-    for (let i = startIndex + 2; i < Math.min(startIndex + 6, lines.length); i++) {
-      const line = lines[i].trim();
-      
-      // Check for availability restriction
-      if (line.startsWith('Not available until')) {
-        const availMatch = line.match(/Not available until\s+(.+)/);
-        if (availMatch) {
-          availableDate = this.parseDate(availMatch[1]);
-        }
-      }
-      
-      // Check for due date
-      if (line.startsWith('Due') || line.includes(' at ')) {
-        const dateMatch = line.match(/(?:Due\s+)?(.+?)\s+at\s+(.+?)(?:\s|$)/);
-        if (dateMatch) {
-          dueDate = this.parseDate(dateMatch[1]);
-          dueTime = this.extractTime(dateMatch[2]);
-        }
-      }
-      
-      // Check for points
-      const pointsMatch = line.match(/([\d.-]+)\s*(?:\/\s*([\d.]+))?\s*pts/);
-      if (pointsMatch) {
-        points = parseFloat(pointsMatch[2] || pointsMatch[1]);
-        
-        // Check if there's a score (for past assignments)
-        if (pointsMatch[1].includes('/')) {
-          const [earned, possible] = pointsMatch[1].split('/');
-          points = parseFloat(possible);
-          status = 'completed';
-        }
-        break;
-      }
-    }
-    
-    if (!title || this.isIgnored(title)) return null;
-    
-    return {
-      id: `canvas_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: this.cleanTitle(title),
-      type: type === 'quiz' ? 'quiz' : this.determineType(title),
-      dueDate: dueDate,
-      dueTime: dueTime || '11:59 PM',
-      availableDate: availableDate,
-      points: points,
-      status: status,
-      course: courseInfo.code,
-      courseName: courseInfo.name,
-      estimatedHours: this.estimateHours(type, title, points),
-      source: 'canvas-assignments',
-      section: section.name
-    };
-  }
-  
-  createAssignmentFromPattern(match, patternType, courseInfo) {
-    // Pattern-specific parsing logic
-    let title, type, dueDate, dueTime, points, status;
-    
-    switch (patternType) {
-      case 'assignmentBlock':
-        type = match[1].toLowerCase();
-        title = match[2];
-        dueDate = this.parseDate(match[3]);
-        dueTime = this.extractTime(match[4]);
-        points = this.extractPoints(match[5]);
-        break;
-        
-      case 'statusAssignment':
-        title = match[1];
-        const dateTime = match[2];
-        const [earned, possible] = match[3].split('/');
-        points = parseFloat(possible);
-        status = 'completed';
-        
-        const dtMatch = dateTime.match(/(.+?)\s+at\s+(.+)/);
-        if (dtMatch) {
-          dueDate = this.parseDate(dtMatch[1]);
-          dueTime = this.extractTime(dtMatch[2]);
-        }
-        break;
-        
-      case 'simpleAssignment':
-        title = match[1];
-        points = parseFloat(match[2] || match[3] || match[4] || 0);
-        type = this.determineType(title);
-        break;
-        
-      default:
-        return null;
-    }
-    
-    if (!title || this.isIgnored(title)) return null;
-    
-    return {
-      id: `canvas_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: this.cleanTitle(title),
-      type: type || this.determineType(title),
-      dueDate: dueDate,
-      dueTime: dueTime || '11:59 PM',
-      points: points || 0,
-      status: status || 'pending',
-      course: courseInfo.code,
-      courseName: courseInfo.name,
-      estimatedHours: this.estimateHours(type || this.determineType(title), title, points),
-      source: 'canvas-assignments'
-    };
-  }
-  
-  isDuplicateAssignment(assignment, existingAssignments) {
-    return existingAssignments.some(existing => 
-      existing.title === assignment.title && 
-      existing.dueDate === assignment.dueDate
-    );
-  }
-}
-
-// Sherpath External Tool Parser
-export class SherpathParser extends BaseCanvasParser {
-  parse(text, course = null) {
-    const assignments = [];
-    const modules = [];
-    const courseInfo = course || this.extractCourseInfo(text);
-    
-    // Clean text
-    const cleanedText = text
-      .replace(/\r\n/g, '\n')
-      .trim();
-    
-    // Extract modules/chapters
-    const moduleBlocks = this.extractModuleBlocks(cleanedText);
-    
-    moduleBlocks.forEach(block => {
-      const moduleData = this.parseModuleBlock(block, courseInfo);
-      if (moduleData.module) {
-        modules.push(moduleData.module);
-      }
-      assignments.push(...moduleData.assignments);
-    });
-    
-    return {
-      assignments: assignments,
-      modules: modules,
-      course: courseInfo,
-      metadata: {
-        documentType: 'sherpath',
-        totalAssignments: assignments.length,
-        totalModules: modules.length,
-        assignmentTypes: this.categorizeSherpathAssignments(assignments)
-      }
-    };
-  }
-  
-  extractModuleBlocks(text) {
-    const blocks = [];
-    const modulePattern = /^(Module|Chapter)\s+(\d+)/m;
-    const lines = text.split('\n');
-    
-    let currentBlock = null;
-    let blockLines = [];
-    
-    lines.forEach((line, index) => {
-      const moduleMatch = line.match(modulePattern);
-      
-      if (moduleMatch) {
-        // Save previous block
-        if (currentBlock) {
-          blocks.push({
-            type: currentBlock.type,
-            number: currentBlock.number,
-            content: blockLines.join('\n')
-          });
-        }
-        
-        // Start new block
-        currentBlock = {
-          type: moduleMatch[1],
-          number: parseInt(moduleMatch[2])
-        };
-        blockLines = [line];
-      } else if (currentBlock) {
-        blockLines.push(line);
-      }
-    });
-    
-    // Don't forget last block
-    if (currentBlock) {
-      blocks.push({
-        type: currentBlock.type,
-        number: currentBlock.number,
-        content: blockLines.join('\n')
-      });
-    }
-    
-    return blocks;
-  }
-  
-  parseModuleBlock(block, courseInfo) {
-    const assignments = [];
-    let module = null;
-    
-    const lines = block.content.split('\n');
-    
-    // Extract module title from first line
-    const titleMatch = lines[0].match(/^(?:Module|Chapter)\s+\d+(?:\s*[,:]?\s*(.+))?/);
-    if (titleMatch) {
-      module = {
-        number: block.number,
-        title: titleMatch[1] || `Module ${block.number}`,
-        type: block.type.toLowerCase(),
-        course: courseInfo.code
-      };
-    }
-    
-    // Parse content items
-    let currentItem = null;
-    let itemLines = [];
-    
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      
-      // Check for content type indicators
-      const typeMatch = line.match(/^(eBook Reading|Adaptive Quiz|Osmosis Video|Simulation|Assignment|Quiz)/);
-      
-      if (typeMatch) {
-        // Process previous item if exists
-        if (currentItem) {
-          const assignment = this.parseSherpathItem(currentItem, itemLines, module, courseInfo);
-          if (assignment) {
-            assignments.push(assignment);
-          }
-        }
-        
-        // Start new item
-        currentItem = {
-          type: typeMatch[1],
-          line: line
-        };
-        itemLines = [];
-      } else if (currentItem) {
-        itemLines.push(line);
-      }
-    }
-    
-    // Process last item
-    if (currentItem) {
-      const assignment = this.parseSherpathItem(currentItem, itemLines, module, courseInfo);
-      if (assignment) {
-        assignments.push(assignment);
-      }
-    }
-    
-    return { module, assignments };
-  }
-  
-  parseSherpathItem(item, lines, module, courseInfo) {
-    let title = '';
-    let estimatedTime = null;
-    let dueDate = null;
-    let dueTime = null;
-    let points = null;
-    let status = 'not started';
-    let chapterRef = null;
-    let pageRange = null;
-    let questions = null;
-    let gradeType = 'not graded';
-    
-    // Parse lines for item details
-    lines.forEach(line => {
-      // Estimated time
-      const timeMatch = line.match(/est\.\s*(\d+)\s*(hr?|hours?|min|minutes?)/i);
-      if (timeMatch) {
-        const value = parseInt(timeMatch[1]);
-        const unit = timeMatch[2].toLowerCase();
-        if (unit.startsWith('h')) {
-          estimatedTime = value;
-        } else {
-          estimatedTime = value / 60; // Convert minutes to hours
-        }
-      }
-      
-      // Title and chapter info
-      if (line.includes('Chapter') && !line.startsWith('Chapter')) {
-        title = line;
-        const chapterMatch = line.match(/Chapter\s+(\d+)/);
-        if (chapterMatch) {
-          chapterRef = parseInt(chapterMatch[1]);
-        }
-      } else if (!title && !line.match(/^(Due|Completed|est\.|Topic|Included in|Pass|Scored|Not Graded)/)) {
-        title = line;
-      }
-      
-      // Page range
-      const pageMatch = line.match(/pages?\s*([\d-]+)/i);
-      if (pageMatch) {
-        pageRange = pageMatch[1];
-      }
-      
-      // Due date
-      const dueMatch = line.match(/Due\s+(.+?)\s+at\s+(.+?)(?:\s+EDT|EST|$)/);
-      if (dueMatch) {
-        dueDate = this.parseSherpathDate(dueMatch[1]);
-        dueTime = this.extractTime(dueMatch[2]);
-      }
-      
-      // Status
-      if (line.includes('Completed Before Due Date')) {
-        status = 'completed';
-      } else if (line.includes('Not Started')) {
-        status = 'not started';
-      }
-      
-      // Grading type
-      if (line.includes('Pass / Fail')) {
-        gradeType = 'pass/fail';
-      } else if (line.includes('Scored')) {
-        gradeType = 'scored';
-      } else if (line.includes('Not Graded')) {
-        gradeType = 'not graded';
-      }
-      
-      // Questions for quizzes
-      const questionsMatch = line.match(/(\d+)\s+questions?/i);
-      if (questionsMatch) {
-        questions = parseInt(questionsMatch[1]);
-      }
-      
-      // Points (for scored items)
-      const pointsMatch = line.match(/(\d+)\s+(?:pts?|points)/i);
-      if (pointsMatch) {
-        points = parseInt(pointsMatch[1]);
-      }
-    });
-    
-    // Set default title if none found
-    if (!title) {
-      title = `${item.type}${chapterRef ? ` - Chapter ${chapterRef}` : ''}`;
-    }
-    
-    // Determine assignment type
-    const type = this.mapSherpathType(item.type);
-    
-    return {
-      id: `sherpath_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      title: title.trim(),
-      type: type,
-      dueDate: dueDate,
-      dueTime: dueTime || '11:59 PM',
-      estimatedHours: estimatedTime || this.estimateHours(type, title, points),
-      points: points || 0,
-      status: status,
-      gradeType: gradeType,
-      module: module ? module.number : null,
-      moduleTitle: module ? module.title : null,
-      chapter: chapterRef,
-      pageRange: pageRange,
-      questions: questions,
-      course: courseInfo.code,
-      courseName: courseInfo.name,
-      source: 'sherpath',
-      platform: 'Evolve Sherpath'
-    };
-  }
-  
-  parseSherpathDate(dateStr) {
-    // Sherpath uses format like "May. 4, 2025" or "May 4, 2025"
-    const cleanDate = dateStr.replace(/\./g, '');
-    return this.parseDate(cleanDate);
-  }
-  
-  mapSherpathType(sherpathType) {
-    const typeMap = {
-      'eBook Reading': 'reading',
-      'Adaptive Quiz': 'quiz',
-      'Osmosis Video': 'video',
-      'Simulation': 'simulation',
-      'Assignment': 'assignment',
-      'Quiz': 'quiz'
-    };
-    
-    return typeMap[sherpathType] || 'assignment';
-  }
-  
-  categorizeSherpathAssignments(assignments) {
-    const categories = {};
-    
-    assignments.forEach(assignment => {
-      const key = assignment.type;
-      categories[key] = (categories[key] || 0) + 1;
-    });
-    
-    return categories;
-  }
-}
-
 // Canvas Quizzes Page Parser
-export class CanvasQuizzesParser extends BaseCanvasParser {
+class CanvasQuizzesParser extends BaseCanvasParser {
   parse(text, course = null) {
     const quizzes = [];
     const courseInfo = course || this.extractCourseInfo(text);
@@ -1283,427 +805,538 @@ export class CanvasQuizzesParser extends BaseCanvasParser {
   }
 }
 
-// Syllabus Parser
-export class SyllabusParser extends BaseCanvasParser {
-  parse(text, course = null) {
+// Syllabus Parser - ENHANCED for nursing syllabus format
+class SyllabusParser extends BaseCanvasParser {
+  parse(text, course) {
     const assignments = [];
-    const schedule = [];
     const modules = [];
-    const courseInfo = course || this.extractCourseInfo(text);
+    const courseInfo = {};
     
-    // Extract additional course details from syllabus
-    const syllabusInfo = this.extractSyllabusInfo(text);
-    Object.assign(courseInfo, syllabusInfo);
-    
-    // Look for different sections in syllabus
-    const sections = this.extractSyllabusSections(text);
-    
-    // Process each section based on its type
-    sections.forEach(section => {
-      switch (section.type) {
-        case 'schedule':
-        case 'outline':
-        case 'modules':
-          const moduleData = this.parseModuleSection(section.content, courseInfo);
-          assignments.push(...moduleData.assignments);
-          modules.push(...moduleData.modules);
-          schedule.push(...moduleData.schedule);
-          break;
-          
-        case 'assignments':
-        case 'grading':
-          const gradingAssignments = this.parseGradingSection(section.content, courseInfo);
-          assignments.push(...gradingAssignments);
-          break;
-          
-        case 'exams':
-          const exams = this.parseExamSection(section.content, courseInfo);
-          assignments.push(...exams);
-          break;
-      }
-    });
-    
-    // Also do a general scan for assignments
-    const generalAssignments = this.scanForAssignments(text, courseInfo);
-    assignments.push(...generalAssignments);
-    
-    return {
-      assignments: this.deduplicateAssignments(assignments),
-      schedule,
-      modules,
-      course: courseInfo,
-      metadata: {
-        documentType: 'syllabus',
-        totalAssignments: assignments.length,
-        totalModules: modules.length,
-        sections: sections.map(s => s.type)
-      }
+    // Extract course information
+    const courseInfoPatterns = {
+      courseCode: /(?:course|class)[:.\s]*([A-Z]{2,4}\s*\d{3,4}[A-Z]?)/gi,
+      courseName: /Course Name:\s*([^\n]+)/gi,
+      instructor: /(?:instructor|professor)[:.\s]*([^\n]+)/gi,
+      credits: /(\d+)\s*(?:credit|hour|cr|hrs?)s?/gi,
+      term: /Term\/Year:\s*([^\n]+)/gi
     };
-  }
-  
-  extractSyllabusInfo(text) {
-    const info = {};
     
-    // Instructor information
-    const instructorMatch = text.match(/Instructor(?:\s+name)?:\s*(.+?)(?:\n|,)/i);
-    if (instructorMatch) {
-      info.instructor = instructorMatch[1].trim();
+    for (const [field, pattern] of Object.entries(courseInfoPatterns)) {
+      const match = text.match(pattern);
+      if (match) {
+        courseInfo[field] = match[1].trim();
+      }
     }
     
-    // Meeting time
-    const meetingMatch = text.match(/(?:Class\s+)?meeting\s+time(?:\(s\))?:\s*(.+?)(?:\n|Location)/i);
-    if (meetingMatch) {
-      info.meetingTime = meetingMatch[1].trim();
-    }
-    
-    // Location
-    const locationMatch = text.match(/Location:\s*(.+?)(?:\n|$)/i);
-    if (locationMatch) {
-      info.location = locationMatch[1].trim();
-    }
-    
-    // Credits
-    const creditsMatch = text.match(/Credits?:\s*(\d+(?:\.\d+)?)/i);
-    if (creditsMatch) {
-      info.credits = parseFloat(creditsMatch[1]);
-    }
-    
-    return info;
-  }
-  
-  extractSyllabusSections(text) {
-    const sections = [];
-    const sectionHeaders = [
-      { pattern: /Course\s+(?:Schedule|Calendar|Outline)/i, type: 'schedule' },
-      { pattern: /(?:Module|Unit|Week)\s+(?:Schedule|Outline|Plan)/i, type: 'modules' },
-      { pattern: /(?:Assignment|Assessment)\s+(?:Schedule|Overview|Details)/i, type: 'assignments' },
-      { pattern: /(?:Grading|Grade)\s+(?:Policy|Breakdown|Distribution)/i, type: 'grading' },
-      { pattern: /(?:Exam|Test)\s+(?:Schedule|Dates)/i, type: 'exams' },
-      { pattern: /Course\s+Outline/i, type: 'outline' },
-      { pattern: /Module\s+\d+:/i, type: 'modules' }
+    // Extract grading breakdown - ENHANCED for nursing syllabus
+    const gradingPatterns = [
+      /(\w+(?:\s+\w+)?)\s*[:=]\s*(\d+)%/gi,
+      /(?:Unit\s+)?Exams?\s*(?:\(\d+\))?[:\s]*(\d+)%/gi,
+      /Course\s+HESI\s+Standardized\s+Exam[:\s]*(\d+)%/gi,
+      /Quizzes\/Assignments[:\s]*(\d+)%/gi
     ];
     
-    // First try to find major sections
-    sectionHeaders.forEach(({ pattern, type }) => {
-      const matches = [...text.matchAll(new RegExp(pattern.source, 'gim'))];
-      
-      matches.forEach(match => {
-        const startPos = match.index;
-        let endPos = text.length;
+    const gradingBreakdown = {};
+    for (const pattern of gradingPatterns) {
+      let gradingMatch;
+      while ((gradingMatch = pattern.exec(text)) !== null) {
+        const component = gradingMatch[1] || 'Component';
+        const percentage = gradingMatch[2] || gradingMatch[1];
+        gradingBreakdown[component.trim()] = parseInt(percentage);
+      }
+    }
+    
+    // Extract schedule/assignments - ENHANCED for nursing module format
+    const schedulePatterns = [
+      // Module format from syllabus
+      /Module\s+(\d+)\s*[:-]?\s*([^\n]+)([\s\S]*?)(?=Module\s+\d+|Week\s+\d+|$)/gi,
+      // Week-based format
+      /Week\s+(\d+)\s*(?:\([^)]+\))?\s*:?\s*([^\n]+)([\s\S]*?)(?=Week\s+\d+|Module\s+\d+|$)/gi,
+      // Date-based format
+      /(\w+\s+\d{1,2}(?:\s*[-–]\s*\d{1,2})?)\s*:?\s*([^\n]+)([\s\S]*?)(?=\w+\s+\d{1,2}|Week\s+\d+|Module\s+\d+|$)/gi
+    ];
+    
+    for (const pattern of schedulePatterns) {
+      let scheduleMatch;
+      pattern.lastIndex = 0;
+      while ((scheduleMatch = pattern.exec(text)) !== null) {
+        const identifier = scheduleMatch[1];
+        const topic = scheduleMatch[2].trim();
+        const content = scheduleMatch[3];
         
-        // Find the next section header
-        for (const nextHeader of sectionHeaders) {
-          const nextMatch = text.slice(startPos + match[0].length).match(nextHeader.pattern);
-          if (nextMatch) {
-            endPos = Math.min(endPos, startPos + match[0].length + nextMatch.index);
+        // Create module entry
+        if (identifier.match(/\d+/)) {
+          modules.push({
+            number: parseInt(identifier.match(/\d+/)[0]),
+            title: topic,
+            course: course || courseInfo.courseCode
+          });
+        }
+        
+        // Extract assignments from content - ENHANCED patterns
+        const assignmentPatterns = [
+          // Standard assignment patterns
+          /(?:Read|Complete|Submit|Due|Assignment|Quiz|Exam|Test|Paper|Project)[:.\s]*([^\n]+)/gi,
+          // Due date patterns
+          /([^\n]+?)(?:\s*[-–]\s*)?(?:due|deadline|submit\s+by)[:.\s]*([^\n]+)/gi,
+          // Bullet points
+          /^[-•*]\s*([^\n]+)/gm,
+          // Date-based assignments
+          /(\w+\s+\d{1,2}):\s*([^\n]+)/gi,
+          // Module content patterns from syllabus
+          /(?:Chapter|Ch\.?)\s*(\d+)[:\s]*([^\n]+)/gi,
+          /Adaptive\s+Quiz/gi,
+          /Module\s+\d+\s+Adaptive\s+Quiz/gi,
+          /HESI\s+(?:Standardized\s+)?Exam/gi
+        ];
+        
+        for (const assignPattern of assignmentPatterns) {
+          let assignMatch;
+          assignPattern.lastIndex = 0;
+          while ((assignMatch = assignPattern.exec(content)) !== null) {
+            const assignmentText = assignMatch[1]?.trim() || assignMatch[2]?.trim() || assignMatch[0].trim();
+            const dueDateText = assignMatch[2]?.trim();
+            
+            // Skip if too short or looks like a header
+            if (assignmentText.length < 5 || 
+                assignmentText.match(/^(Topics?|Objectives?|Goals?|Overview|Content|Materials?)/i)) {
+              continue;
+            }
+            
+            if (!assignments.some(a => a.text === assignmentText)) {
+              assignments.push({
+                id: `syllabus_${Date.now()}_${assignments.length}`,
+                text: assignmentText,
+                date: this.extractDate(dueDateText || assignmentText, identifier),
+                type: this.determineType(assignmentText),
+                hours: this.estimateHours(this.determineType(assignmentText), assignmentText, 0),
+                course: course || courseInfo.courseCode,
+                week: identifier.includes('Week') ? parseInt(identifier.match(/\d+/)[0]) : null,
+                module: identifier.includes('Module') ? parseInt(identifier.match(/\d+/)[0]) : null,
+                source: 'syllabus',
+                confidence: 0.75,
+                extractedFrom: assignMatch[0]
+              });
+            }
           }
         }
-        
-        sections.push({
-          type: type,
-          header: match[0],
-          content: text.substring(startPos, endPos)
-        });
-      });
-    });
-    
-    // If no sections found, treat entire text as one section
-    if (sections.length === 0) {
-      sections.push({
-        type: 'general',
-        header: 'Full Document',
-        content: text
-      });
+      }
     }
     
-    return sections;
+    return { 
+      assignments, 
+      modules, 
+      courseInfo, 
+      gradingBreakdown 
+    };
   }
   
-  parseModuleSection(text, courseInfo) {
+  extractDate(text, weekIdentifier) {
+    // Look for explicit dates in the text
+    const datePatterns = [
+      /(\w+\s+\d{1,2})/,
+      /(\d{1,2}\/\d{1,2})/,
+      /due\s+(\w+)/i,
+      /by\s+(\w+\s+\d{1,2})/i,
+      /(\w+\s+\d{1,2}\s+(?:at|by)\s+\d{1,2}(?::\d{2})?(?:am|pm)?)/i
+    ];
+    
+    for (const pattern of datePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const dateStr = match[1] || match[0];
+        const date = new Date(dateStr + ', 2025');
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().split('T')[0];
+        }
+      }
+    }
+    
+    // If week-based, calculate approximate date (Sunday of that week)
+    if (weekIdentifier && weekIdentifier.includes('Week')) {
+      const weekNum = parseInt(weekIdentifier.match(/\d+/)[0]);
+      const semesterStart = new Date('2025-05-05'); // May 5, 2025
+      const targetDate = new Date(semesterStart);
+      targetDate.setDate(targetDate.getDate() + (weekNum - 1) * 7); // Sunday of that week
+      return targetDate.toISOString().split('T')[0];
+    }
+    
+    return null;
+  }
+}
+
+// Schedule/Course Outline Parser - ENHANCED for nursing schedule format
+class ScheduleParser extends BaseCanvasParser {
+  parse(text, course) {
     const assignments = [];
     const modules = [];
-    const schedule = [];
     
-    // Pattern for module/week blocks
-    const modulePattern = /(?:Module|Week|Unit)\s+(\d+)(?:\s*[-:])?\s*(.+?)(?=(?:Module|Week|Unit)\s+\d+|$)/gis;
-    const moduleMatches = [...text.matchAll(modulePattern)];
+    // Store lines and initialize context
+    this.lines = text.split('\n');
+    this.dateContext = null;
     
-    moduleMatches.forEach(match => {
-      const moduleNum = parseInt(match[1]);
-      const moduleContent = match[0];
-      const moduleTitle = match[2].trim().split('\n')[0];
+    let currentWeek = null;
+    let currentModule = null;
+    
+    for (let i = 0; i < this.lines.length; i++) {
+      const line = this.lines[i].trim();
+      if (line.length < 3) continue;
       
-      const module = {
-        number: moduleNum,
-        title: moduleTitle,
-        type: 'module',
-        course: courseInfo.code
-      };
-      modules.push(module);
-      
-      // Extract learning outcomes
-      const outcomesMatch = moduleContent.match(/(?:Learning\s+)?Outcomes?:?\s*\n([\s\S]+?)(?=\n\s*Content|Student\s+Learning|$)/i);
-      if (outcomesMatch) {
-        module.learningOutcomes = this.parseListItems(outcomesMatch[1]);
-      }
-      
-      // Extract assignments from module content
-      const moduleAssignments = this.extractModuleAssignments(moduleContent, moduleNum, moduleTitle, courseInfo);
-      assignments.push(...moduleAssignments);
-      
-      // Add to schedule
-      const weekMatch = moduleContent.match(/Week\s+\d+/i);
+      // Track week context
+      const weekMatch = line.match(/Week\s+(\d+)/i);
       if (weekMatch) {
-        schedule.push({
-          week: moduleNum,
-          module: moduleTitle,
-          assignments: moduleAssignments.length
+        currentWeek = parseInt(weekMatch[1]);
+        modules.push({
+          number: currentWeek,
+          title: `Week ${currentWeek}`,
+          course: course
         });
       }
-    });
+      
+      // Track module context
+      const moduleMatch = line.match(/Module\s+(\d+)\s*[:-]?\s*(.+)?/i);
+      if (moduleMatch) {
+        currentModule = parseInt(moduleMatch[1]);
+        modules.push({
+          number: currentModule,
+          title: moduleMatch[2]?.trim() || `Module ${currentModule}`,
+          course: course
+        });
+      }
+      
+      // Extract date and update context
+      const lineDate = this.extractDateFromLine(line, i);
+      
+      // Look for assignments - ENHANCED detection
+      if (this.isAssignmentLine(line)) {
+        const assignment = this.parseAssignmentLine(line, currentWeek, currentModule, lineDate || this.getContextualDate(i), course);
+        if (assignment && !assignments.some(a => a.text === assignment.text)) {
+          assignments.push(assignment);
+        }
+      }
+    }
     
-    return { assignments, modules, schedule };
+    return { assignments, modules };
   }
   
-  extractModuleAssignments(moduleText, moduleNum, moduleTitle, courseInfo) {
-    const assignments = [];
-    
-    // Common assignment patterns in syllabi
-    const patterns = [
-      // Readings pattern
-      /(?:Read(?:ing)?s?|Textbook):\s*(.+?)(?:\n|$)/gi,
-      
-      // Assignment with due date
-      /(.+?)\s*(?:Due|Submit(?:ted)?|Complete(?:d)?)\s*(?:by|on|:)?\s*([^\n]+)/gi,
-      
-      // Points-based assignments
-      /(.+?)\s*[\(\[](\d+)\s*(?:pts?|points)[\)\]]/gi,
-      
-      // Quiz/Exam patterns
-      /(Quiz|Exam|Test|Midterm|Final)\s*(\d+)?[:]?\s*(.+?)(?:\n|$)/gi,
-      
-      // Assignments section items
-      /^\s*[\d.)]+\s*(.+?)(?:\n|$)/gm,
-      
-      // Bullet point items
-      /^\s*[•·▪▫◦‣⁃-]\s*(.+?)(?:\n|$)/gm
+  isAssignmentLine(line) {
+    // Enhanced assignment detection for nursing content
+    const indicators = [
+      /\b(quiz|exam|test|assignment|project|paper|read|chapter|complete|submit|hesi|remediation|activity|case\s*stud|simulation|registration|attestation|ticket\s*to\s*enter|pre-work|database|dropbox|clinical|lab|reflection|discussion|adaptive\s*quiz)\b/i,
+      /\b(prep|review|reflection)\b.*\b(assignment|quiz|exam|test)\b/i,
+      /\(\d+\s*(pts?|points?)\)/i,
+      /\bdue\b/i,
+      /^\*+[^:]+:/,  // Lines starting with * followed by content and :
+      /Chapter\s+\d+/i,
+      /Module\s+\d+\s+Adaptive\s+Quiz/i,
+      /HESI\s+(?:Standardized\s+)?Exam/i
     ];
     
-    patterns.forEach(pattern => {
-      const matches = [...moduleText.matchAll(pattern)];
-      
-      matches.forEach(match => {
-        let title = match[1] || match[0];
-        let dueDate = null;
-        let points = 0;
-        
-        // Extract due date if present
-        if (match[2] && match[2].match(/\d|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/i)) {
-          dueDate = this.parseDate(match[2]);
-          title = match[1];
-        }
-        
-        // Extract points if present
-        const pointsMatch = match[0].match(/(\d+)\s*(?:pts?|points)/i);
-        if (pointsMatch) {
-          points = parseInt(pointsMatch[1]);
-        }
-        
-        // Clean and validate title
-        title = this.cleanTitle(title);
-        if (title.length < 3 || this.isIgnored(title)) return;
-        
-        const assignment = {
-          id: `syllabus_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          title: title,
-          type: this.determineType(title),
-          dueDate: dueDate,
-          points: points,
-          module: moduleNum,
-          moduleTitle: moduleTitle,
-          course: courseInfo.code,
-          courseName: courseInfo.name,
-          estimatedHours: this.estimateHours(this.determineType(title), title, points),
-          source: 'syllabus'
-        };
-        
-        assignments.push(assignment);
-      });
-    });
-    
-    return assignments;
+    return indicators.some(pattern => pattern.test(line));
   }
   
-  parseGradingSection(text, courseInfo) {
-    const assignments = [];
+  parseAssignmentLine(line, currentWeek, currentModule, contextDate, course) {
+    // Extract the actual assignment text
+    let assignmentText = line
+      .replace(/^\*+\s*/, '') // Remove leading asterisks
+      .replace(/^[-•]\s*/, '') // Remove bullets
+      .replace(/\*+$/, '') // Remove trailing asterisks
+      .trim();
     
-    // Look for grading breakdown
-    const gradingPattern = /(.+?)\s*[-–:]\s*(\d+)\s*%/g;
-    const matches = [...text.matchAll(gradingPattern)];
+    // Extract date from the line itself first
+    let date = this.extractDateFromLine(line, this.lines.indexOf(line)) || contextDate;
     
-    matches.forEach(match => {
-      const category = match[1].trim();
-      const weight = parseInt(match[2]);
-      
-      // Create a placeholder assignment for major grade categories
-      if (weight >= 10 && !this.isIgnored(category)) {
-        assignments.push({
-          id: `syllabus_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          title: category,
-          type: this.determineType(category),
-          weight: weight,
-          course: courseInfo.code,
-          courseName: courseInfo.name,
-          estimatedHours: this.estimateHoursByWeight(weight),
-          source: 'syllabus-grading'
-        });
-      }
-    });
+    // Clean up assignment text by removing date prefixes
+    assignmentText = assignmentText
+      .replace(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*/i, '')
+      .replace(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2}:?\s*/i, '')
+      .replace(/^\d{1,2}\/\d{1,2}:?\s*/, '')
+      .replace(/^Week\s+\d+:?\s*/i, '')
+      .replace(/^Module\s+\d+:?\s*/i, '')
+      .trim();
     
-    return assignments;
-  }
-  
-  parseExamSection(text, courseInfo) {
-    const exams = [];
-    
-    // Exam patterns
-    const examPattern = /(Exam|Test|Quiz|Midterm|Final)\s*(\d+)?[:]?\s*(.+?)(?:\n|$)/gi;
-    const matches = [...text.matchAll(examPattern)];
-    
-    matches.forEach(match => {
-      const type = match[1].toLowerCase();
-      const number = match[2] || '';
-      const details = match[3];
-      
-      // Extract date from details
-      const dueDate = this.parseDate(details);
-      
-      exams.push({
-        id: `exam_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        title: `${match[1]}${number ? ' ' + number : ''}`,
-        type: type === 'quiz' ? 'quiz' : 'exam',
-        dueDate: dueDate,
-        course: courseInfo.code,
-        courseName: courseInfo.name,
-        estimatedHours: type === 'final' ? 4 : type === 'midterm' ? 3 : 2,
-        source: 'syllabus-exams'
-      });
-    });
-    
-    return exams;
-  }
-  
-  scanForAssignments(text, courseInfo) {
-    const assignments = [];
-    
-    // General assignment scanning patterns
-    const generalPatterns = [
-      // Assignment with explicit "Assignment" keyword
-      /Assignment\s*(\d+)?[:]?\s*(.+?)(?:\n|Due:|$)/gi,
-      
-      // Items with due dates
-      /(.+?)\s+due\s+(.+?)(?:\n|$)/gi,
-      
-      // Submission items
-      /Submit\s+(.+?)(?:\s+by\s+(.+?))?(?:\n|$)/gi
-    ];
-    
-    generalPatterns.forEach(pattern => {
-      const matches = [...text.matchAll(pattern)];
-      
-      matches.forEach(match => {
-        let title, dueDate;
-        
-        if (pattern.source.includes('Assignment')) {
-          title = match[2] || `Assignment ${match[1] || ''}`;
-          dueDate = this.extractDate(match[0]);
-        } else {
-          title = match[1];
-          dueDate = this.parseDate(match[2]);
-        }
-        
-        title = this.cleanTitle(title);
-        if (title.length < 3 || this.isIgnored(title)) return;
-        
-        assignments.push({
-          id: `syllabus_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          title: title,
-          type: this.determineType(title),
-          dueDate: dueDate,
-          course: courseInfo.code,
-          courseName: courseInfo.name,
-          estimatedHours: this.estimateHours(this.determineType(title), title, 0),
-          source: 'syllabus-scan'
-        });
-      });
-    });
-    
-    return assignments;
-  }
-  
-  parseListItems(text) {
-    const items = [];
-    const lines = text.split('\n');
-    
-    lines.forEach(line => {
-      const cleaned = line.trim();
-      if (cleaned && !cleaned.match(/^\s*$/)) {
-        // Remove bullet points and numbers
-        const item = cleaned.replace(/^[\d.)]+\s*/, '').replace(/^[•·▪▫◦‣⁃-]\s*/, '');
-        if (item) items.push(item);
-      }
-    });
-    
-    return items;
-  }
-  
-  estimateHoursByWeight(weight) {
-    // Estimate hours based on grade weight
-    if (weight >= 30) return 20;
-    if (weight >= 20) return 15;
-    if (weight >= 15) return 10;
-    if (weight >= 10) return 5;
-    return 2;
-  }
-}
-
-// Schedule Parser
-export class ScheduleParser extends BaseCanvasParser {
-  parse(text, course = null) {
-    const assignments = [];
-    const events = [];
-    const courseInfo = course || this.extractCourseInfo(text);
-    
-    // Schedule-specific patterns
-    const patterns = {
-      // Table row format
-      tableRow: /([^\t\n]+)\t+([^\t\n]+)\t+([^\t\n]+)(?:\t+([^\t\n]+))?/g,
-      
-      // List format with dates
-      listFormat: /((?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s*)?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^\n:]+[:\s]+(.+?)(?=(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|$)/gis,
-      
-      // Time-based schedule
-      timeSlot: /(\d{1,2}:\d{2}\s*(?:am|pm))\s*[-–]\s*(\d{1,2}:\d{2}\s*(?:am|pm))\s*[:\s]+(.+?)(?=\d{1,2}:\d{2}\s*(?:am|pm)|$)/gi
-    };
-    
-    // Process different schedule formats
-    // This is a simplified version - you'd expand based on actual schedule formats
+    // Extract points if present
+    const pointsMatch = assignmentText.match(/\((\d+)\s*(pts?|points?)\)/i);
+    const points = pointsMatch ? parseInt(pointsMatch[1]) : null;
     
     return {
-      assignments,
-      events,
-      course: courseInfo,
-      metadata: {
-        documentType: 'schedule',
-        totalAssignments: assignments.length,
-        totalEvents: events.length
-      }
+      id: `schedule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      text: assignmentText,
+      date: date,
+      points: points,
+      type: this.determineType(assignmentText),
+      hours: this.estimateHours(this.determineType(assignmentText), assignmentText, points),
+      course: course,
+      week: currentWeek,
+      module: currentModule,
+      source: 'schedule',
+      confidence: 0.7,
+      extractedFrom: line
     };
+  }
+  
+  extractDateFromLine(line, lineIndex) {
+    // Multiple date patterns to try
+    const patterns = [
+      // *August 1:** format
+      /\*+\s*(\w+\s+\d{1,2})\s*(?:\*+|:)/,
+      // *Thursday August 7 format
+      /\*+\s*((?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+\w+\s+\d{1,2})/i,
+      // Standard date formats
+      /(?:^|\s)(\w+\s+\d{1,2})(?:\s|,|:|$)/,
+      /(?:^|\s)(\d{1,2}\/\d{1,2})(?:\s|,|:|$)/,
+      // Due: date format
+      /Due:\s*(\w+\s+\d{1,2}|\d{1,2}\/\d{1,2})/i,
+      // Parenthetical dates
+      /\((\w+\s+\d{1,2}|\d{1,2}\/\d{1,2})\)/,
+      // Canvas date format
+      /(\w+\s+\d{1,2}\s+(?:at|by)\s+\d{1,2}(?::\d{2})?(?:am|pm)?)/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      if (match) {
+        const dateStr = match[1].trim();
+        const parsedDate = this.parseScheduleDate(dateStr);
+        if (parsedDate) {
+          // Look for empty lines to determine scope
+          const hasEmptyBefore = lineIndex > 0 && this.lines[lineIndex - 1].trim() === '';
+          const hasEmptyAfter = lineIndex < this.lines.length - 1 && this.lines[lineIndex + 1].trim() === '';
+          
+          // Store with context direction
+          this.dateContext = {
+            date: parsedDate,
+            lineIndex: lineIndex,
+            appliesForward: hasEmptyBefore || !hasEmptyAfter,
+            appliesBackward: hasEmptyAfter || !hasEmptyBefore
+          };
+          
+          return parsedDate;
+        }
+      }
+    }
+    
+    return null;
+  }
+  
+  getContextualDate(lineIndex) {
+    if (!this.dateContext) return null;
+    
+    const { date, lineIndex: contextLineIndex, appliesForward, appliesBackward } = this.dateContext;
+    
+    // Check if current line is within context scope
+    if (lineIndex > contextLineIndex && appliesForward) {
+      return date;
+    }
+    if (lineIndex < contextLineIndex && appliesBackward) {
+      return date;
+    }
+    
+    return null;
+  }
+  
+  parseScheduleDate(dateStr) {
+    if (!dateStr) return null;
+    
+    try {
+      // Remove day names if present
+      const cleanDateStr = dateStr.replace(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+/i, '');
+      
+      // Add year if not present
+      let fullDateStr = cleanDateStr;
+      if (!cleanDateStr.match(/\d{4}/)) {
+        fullDateStr = cleanDateStr + ', 2025';
+      }
+      
+      const date = new Date(fullDateStr);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    } catch (e) {
+      console.warn('Failed to parse schedule date:', dateStr);
+    }
+    
+    return null;
   }
 }
 
-// Export parser registry
-export class DocumentParsers {
+// NEW: Sherpath Parser for Evolve content
+class SherpathParser extends BaseCanvasParser {
+  parse(text, course) {
+    const assignments = [];
+    const modules = [];
+    let currentModule = null;
+    
+    // Split by lines for better processing
+    const lines = text.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Track modules
+      const moduleMatch = line.match(/Module\s+(\d+)(?:\s*[:-]\s*(.+))?/i);
+      if (moduleMatch) {
+        currentModule = {
+          number: parseInt(moduleMatch[1]),
+          title: moduleMatch[2]?.trim() || `Module ${moduleMatch[1]}`,
+          course: course
+        };
+        modules.push(currentModule);
+      }
+      
+      // Parse eBook Reading
+      if (line.includes('eBook Reading')) {
+        const timeMatch = lines[i].match(/est\.\s*(\d+\s*(?:hr|hour|min)[^\n]*)/);
+        const titleMatch = lines[i + 1]?.match(/Chapter\s+\d+[^:]*:\s*(.+)/);
+        const bookMatch = lines[i + 2]?.match(/Murray:/);
+        
+        if (titleMatch || bookMatch) {
+          const title = titleMatch ? titleMatch[0] : lines[i + 1]?.trim() || 'eBook Reading';
+          assignments.push({
+            id: `sherpath_reading_${Date.now()}_${assignments.length}`,
+            text: title,
+            type: 'reading',
+            hours: this.parseTimeEstimate(timeMatch?.[1]),
+            course: course,
+            module: currentModule?.number,
+            source: 'sherpath',
+            platform: 'evolve',
+            confidence: 0.95,
+            extractedFrom: `${line} ${lines[i + 1] || ''}`
+          });
+        }
+      }
+      
+      // Parse Osmosis Video
+      if (line.includes('Osmosis Video')) {
+        const timeMatch = line.match(/est\.\s*(\d+\s*min)/);
+        const titleLine = lines[i + 1]?.trim();
+        const dueMatch = lines[i + 3]?.match(/Due\s+(.+?)(?:\s+EDT)?$/);
+        
+        if (titleLine) {
+          assignments.push({
+            id: `osmosis_video_${Date.now()}_${assignments.length}`,
+            text: titleLine,
+            type: 'video',
+            hours: this.parseTimeEstimate(timeMatch?.[1]),
+            date: dueMatch ? this.parseSherpathDate(dueMatch[1]) : null,
+            course: course,
+            module: currentModule?.number,
+            source: 'sherpath',
+            platform: 'osmosis',
+            confidence: 0.95,
+            extractedFrom: `${line} ${titleLine}`
+          });
+        }
+      }
+      
+      // Parse Adaptive Quiz
+      if (line.includes('Adaptive Quiz (EAQ)')) {
+        const titleLine = lines[i + 1]?.trim();
+        const questionsMatch = lines[i + 2]?.match(/(\d+)\s*questions?/);
+        const topicsMatch = lines[i + 3]?.match(/Topic\(s\):\s*(.+)/);
+        const dueMatch = lines[i + 4]?.match(/Due\s+(.+?)(?:\s+EDT)?$/);
+        
+        if (titleLine) {
+          assignments.push({
+            id: `adaptive_quiz_${Date.now()}_${assignments.length}`,
+            text: titleLine,
+            type: 'quiz',
+            questions: questionsMatch ? parseInt(questionsMatch[1]) : null,
+            topics: topicsMatch?.[1],
+            date: dueMatch ? this.parseSherpathDate(dueMatch[1]) : null,
+            course: course,
+            module: currentModule?.number,
+            source: 'sherpath',
+            platform: 'eaq',
+            confidence: 0.95,
+            extractedFrom: `${line} ${titleLine}`
+          });
+        }
+      }
+      
+      // Parse Simulation
+      if (line.includes('Simulation')) {
+        const timeMatch = line.match(/est\.\s*(\d+\s*min)/);
+        const titleLine = lines[i + 1]?.trim();
+        
+        if (titleLine) {
+          assignments.push({
+            id: `simulation_${Date.now()}_${assignments.length}`,
+            text: titleLine,
+            type: 'simulation',
+            hours: this.parseTimeEstimate(timeMatch?.[1]),
+            course: course,
+            module: currentModule?.number,
+            source: 'sherpath',
+            confidence: 0.9,
+            extractedFrom: `${line} ${titleLine}`
+          });
+        }
+      }
+    }
+    
+    return { assignments, modules };
+  }
+  
+  parseTimeEstimate(timeStr) {
+    if (!timeStr) return null;
+    
+    let totalHours = 0;
+    
+    // Parse hours
+    const hourMatch = timeStr.match(/(\d+)\s*(?:hr|hour)/i);
+    if (hourMatch) {
+      totalHours += parseInt(hourMatch[1]);
+    }
+    
+    // Parse minutes
+    const minMatch = timeStr.match(/(\d+)\s*min/i);
+    if (minMatch) {
+      totalHours += parseInt(minMatch[1]) / 60;
+    }
+    
+    return totalHours > 0 ? Math.round(totalHours * 10) / 10 : null;
+  }
+  
+  parseSherpathDate(dateStr) {
+    if (!dateStr) return null;
+    
+    // Month map
+    const months = {
+      'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5,
+      'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11
+    };
+    
+    // Try different Sherpath date formats
+    const patterns = [
+      // "May. 4, 2025 at 11:59pm"
+      /(\w+)\.?\s+(\d{1,2}),?\s+(\d{4})\s+at\s+(\d{1,2}):(\d{2})(am|pm)/i,
+      // "May. 4 at 11:59pm" (year implied)
+      /(\w+)\.?\s+(\d{1,2})\s+at\s+(\d{1,2}):(\d{2})(am|pm)/i,
+      // Simple "May. 4, 2025"
+      /(\w+)\.?\s+(\d{1,2}),?\s+(\d{4})/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = dateStr.match(pattern);
+      if (match) {
+        const monthName = match[1].toLowerCase();
+        const month = months[monthName.substring(0, 3)];
+        const day = parseInt(match[2]);
+        const year = match[3] ? parseInt(match[3]) : 2025;
+        
+        const date = new Date(year, month, day);
+        return date.toISOString().split('T')[0];
+      }
+    }
+    
+    return null;
+  }
+}
+
+// Export parser information for UI
+class DocumentParsers {
   static parsers = {
     'canvas-modules': {
       name: 'Canvas Modules Page',
@@ -1726,8 +1359,8 @@ export class DocumentParsers {
       parser: CanvasQuizzesParser
     },
     'sherpath': {
-      name: 'Sherpath Course Plan',
-      description: 'Copy/paste from Evolve Sherpath course plan',
+      name: 'Sherpath/Evolve Content',
+      description: 'Sherpath course plan or Evolve content',
       parser: SherpathParser
     },
     'syllabus': {
@@ -1741,7 +1374,7 @@ export class DocumentParsers {
       parser: ScheduleParser
     }
   };
-
+  
   static getParserInfo(type) {
     return this.parsers[type] || null;
   }
@@ -1784,15 +1417,16 @@ export class DocumentParsers {
   }
 }
 
-// Export all parser classes for use in StudioraDualParser
+// Export all parser classes and default export
 export {
-  BaseCanvasParser,
   CanvasModulesParser,
-  CanvasAssignmentsParser,
   CanvasGradesParser,
-  CanvasQuizzesParser,
+  CanvasAssignmentsParser,
   SherpathParser,
+  CanvasQuizzesParser,
   SyllabusParser,
   ScheduleParser,
   DocumentParsers
 };
+
+export default DocumentParsers;
