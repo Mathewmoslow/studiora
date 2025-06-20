@@ -1,0 +1,769 @@
+// src/services/RegexDocumentParser.js
+// Enhanced flexible generic parser for mixed/unknown document types
+
+export class RegexDocumentParser {
+  constructor() {
+    // Comprehensive patterns that work across all educational formats
+    this.patterns = {
+      // Course patterns - matches any department code format
+      course: /\b([A-Z]{2,})\s*(\d{3,4}[A-Z]?)(?:\s*[:\-]\s*(.+?))?(?=\n|Summer|Spring|Fall|Winter|$)/gi,
+      
+      // Date patterns - exhaustive coverage
+      date: {
+        // Month day year variations
+        monthDayYear: /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?\b/gi,
+        
+        // Numeric date formats
+        numeric: /\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})\b/g,
+        
+        // ISO format
+        iso: /\b(\d{4})-(\d{2})-(\d{2})\b/g,
+        
+        // Relative dates
+        relative: /\b(today|tomorrow|yesterday|next\s+\w+|this\s+\w+|last\s+\w+)\b/gi,
+        
+        // Day of week
+        dayOfWeek: /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/gi,
+        
+        // Date ranges
+        range: /\b((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^-]+)\s*[-–]\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^,\n]+)/gi
+      },
+      
+      // Time patterns
+      time: /\b(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|AM|PM)\b|\b(\d{1,2})\s*(am|pm|AM|PM)\b/gi,
+      
+      // Module/Unit/Week patterns
+      module: /(?:module|unit|chapter|week|lesson|topic|session)\s*(\d+)[\s:\-]*(.+?)(?=(?:module|unit|chapter|week|lesson|topic|session)\s*\d+|\n\n|$)/gis,
+      
+      // Assignment patterns - comprehensive list
+      assignment: {
+        // Explicit assignment indicators
+        explicit: /(?:assignment|quiz|test|exam|midterm|final|project|paper|essay|homework|lab|clinical|simulation|presentation|discussion|forum|activity|exercise|problem\s*set|case\s*study|reflection|journal|portfolio|practicum)[\s:#]*(.+?)(?=\n|$)/gi,
+        
+        // Action-based patterns
+        action: /(?:read|complete|submit|turn\s*in|due|finish|do|prepare|study|review|watch|attend|participate|write|create|develop|analyze|solve|answer|respond|post|upload|download)[\s:]+(.+?)(?:\s+(?:by|before|on|at)\s+([^\n,;]+))?/gi,
+        
+        // Due date patterns
+        duePattern: /(.+?)\s+(?:due|deadline|submit\s*by|turn\s*in\s*by|complete\s*by|finish\s*by)\s*:?\s*([^\n,;]+)/gi,
+        
+        // Points/percentage patterns
+        withPoints: /(.+?)\s*[\(\[\{]?\s*(\d+(?:\.\d+)?)\s*(?:pts?|points?|%|percent)[\)\]\}]?/gi,
+        
+        // Bullet point items
+        bulletItems: /^\s*[•·▪▫◦‣⁃]\s*(.+?)(?:\s*[-–]\s*(.+?))?$/gm,
+        
+        // Numbered items
+        numberedItems: /^\s*\d+[.)]\s*(.+?)(?:\s*[-–]\s*(.+?))?$/gm,
+        
+        // Letter items
+        letterItems: /^\s*[a-z][.)]\s*(.+?)(?:\s*[-–]\s*(.+?))?$/gmi
+      },
+      
+      // Points/Score patterns
+      points: /(\d+(?:\.\d+)?)\s*(?:\/\s*(\d+(?:\.\d+)?))?\s*(?:pts?|points?|marks?|credits?)/gi,
+      
+      // Percentage patterns
+      percentage: /(\d+(?:\.\d+)?)\s*%/g,
+      
+      // Credit hour patterns
+      credits: /(\d+(?:\.\d+)?)\s*(?:credit|hour|unit|cr|hr)s?/gi,
+      
+      // Room/Location patterns
+      location: /(?:room|rm|location|venue|place)\s*:?\s*([A-Z0-9]+[-\s]?\d+[A-Z]?)/gi,
+      
+      // Instructor patterns
+      instructor: /(?:instructor|professor|prof|teacher|facilitator|lecturer)\s*:?\s*(?:Dr\.|Prof\.|Mr\.|Mrs\.|Ms\.)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/gi,
+      
+      // Section patterns
+      section: /(?:section|sec)\s*:?\s*(\d+[A-Z]?)/gi,
+      
+      // Term patterns
+      term: /(Spring|Summer|Fall|Winter|Semester|Quarter|Session)\s*([A-Z]?\s*)?(\d{4})/gi
+    };
+    
+    // Keywords for categorization
+    this.keywords = {
+      assignmentTypes: [
+        'quiz', 'exam', 'test', 'midterm', 'final', 'assessment',
+        'assignment', 'homework', 'exercise', 'problem set',
+        'project', 'presentation', 'demo', 'demonstration',
+        'paper', 'essay', 'report', 'thesis', 'dissertation',
+        'lab', 'laboratory', 'practical', 'experiment',
+        'clinical', 'rotation', 'practicum', 'internship',
+        'discussion', 'forum', 'post', 'response', 'reflection',
+        'reading', 'chapter', 'article', 'textbook',
+        'video', 'lecture', 'tutorial', 'seminar',
+        'simulation', 'case study', 'scenario',
+        'portfolio', 'journal', 'log', 'diary'
+      ],
+      
+      actionWords: [
+        'complete', 'submit', 'turn in', 'due', 'finish',
+        'read', 'study', 'review', 'prepare', 'practice',
+        'write', 'create', 'develop', 'design', 'build',
+        'solve', 'calculate', 'analyze', 'evaluate',
+        'attend', 'participate', 'present', 'demonstrate',
+        'watch', 'view', 'listen', 'observe'
+      ],
+      
+      ignoredTerms: [
+        'syllabus', 'office hours', 'contact information',
+        'course description', 'learning objectives', 'outcomes',
+        'grading scale', 'attendance policy', 'late policy',
+        'academic integrity', 'resources', 'materials',
+        'textbook', 'required text', 'recommended reading',
+        'course calendar', 'schedule overview', 'important dates',
+        'welcome', 'introduction', 'getting started',
+        'announcement', 'reminder', 'note', 'update'
+      ]
+    };
+  }
+
+  parse(text, template = 'auto') {
+    console.log('📝 RegexDocumentParser: Starting flexible parse...');
+    
+    const assignments = [];
+    const events = [];
+    const modules = [];
+    
+    // Clean and normalize text
+    const normalizedText = this.normalizeText(text);
+    
+    // Extract course information
+    const courseInfo = this.extractCourseInfo(normalizedText);
+    
+    // Extract modules/sections first for context
+    const extractedModules = this.extractModules(normalizedText);
+    modules.push(...extractedModules.modules);
+    
+    // Parse assignments with context
+    const moduleAssignments = this.parseAssignmentsInContext(normalizedText, extractedModules.sections, courseInfo);
+    assignments.push(...moduleAssignments);
+    
+    // Parse standalone assignments
+    const standaloneAssignments = this.parseStandaloneAssignments(normalizedText, courseInfo);
+    assignments.push(...standaloneAssignments);
+    
+    // Extract events (class meetings, etc.)
+    const extractedEvents = this.extractEvents(normalizedText, courseInfo);
+    events.push(...extractedEvents);
+    
+    // Deduplicate and clean results
+    const cleanedAssignments = this.deduplicateAndClean(assignments);
+    
+    // Calculate confidence score
+    const confidence = this.calculateConfidence(cleanedAssignments, normalizedText);
+    
+    return {
+      assignments: cleanedAssignments,
+      events: events,
+      modules: modules,
+      course: courseInfo,
+      confidence: confidence,
+      metadata: {
+        parser: 'RegexDocumentParser',
+        template: template,
+        totalAssignments: cleanedAssignments.length,
+        totalEvents: events.length,
+        totalModules: modules.length,
+        documentLength: text.length
+      }
+    };
+  }
+
+  normalizeText(text) {
+    return text
+      .replace(/\r\n/g, '\n')           // Normalize line endings
+      .replace(/\t/g, '    ')           // Convert tabs to spaces
+      .replace(/\n{3,}/g, '\n\n')       // Reduce multiple newlines
+      .replace(/\s+$/gm, '')            // Trim trailing spaces
+      .replace(/^\s+/gm, '')            // Trim leading spaces
+      .trim();
+  }
+
+  extractCourseInfo(text) {
+    const courseMatch = [...text.matchAll(this.patterns.course)];
+    const termMatch = text.match(this.patterns.term);
+    const sectionMatch = text.match(this.patterns.section);
+    const instructorMatch = text.match(this.patterns.instructor);
+    
+    let courseInfo = {
+      code: 'UNKNOWN',
+      department: null,
+      number: null,
+      name: 'Unknown Course',
+      term: null,
+      section: null,
+      instructor: null
+    };
+    
+    if (courseMatch.length > 0) {
+      const [full, dept, number, name] = courseMatch[0];
+      courseInfo = {
+        ...courseInfo,
+        code: `${dept}${number}`,
+        department: dept,
+        number: number,
+        name: name ? name.trim() : `${dept} ${number}`
+      };
+    }
+    
+    if (termMatch) {
+      courseInfo.term = `${termMatch[1]} ${termMatch[3]}`;
+    }
+    
+    if (sectionMatch) {
+      courseInfo.section = sectionMatch[1];
+    }
+    
+    if (instructorMatch) {
+      courseInfo.instructor = instructorMatch[1];
+    }
+    
+    return courseInfo;
+  }
+
+  extractModules(text) {
+    const modules = [];
+    const sections = [];
+    
+    const moduleMatches = [...text.matchAll(this.patterns.module)];
+    
+    moduleMatches.forEach((match, index) => {
+      const moduleNum = parseInt(match[1]);
+      const moduleTitle = match[2].trim();
+      const startPos = match.index;
+      const endPos = index < moduleMatches.length - 1 ? moduleMatches[index + 1].index : text.length;
+      
+      modules.push({
+        number: moduleNum,
+        title: moduleTitle,
+        type: this.inferModuleType(match[0])
+      });
+      
+      sections.push({
+        number: moduleNum,
+        title: moduleTitle,
+        content: text.substring(startPos, endPos),
+        startPos,
+        endPos
+      });
+    });
+    
+    return { modules, sections };
+  }
+
+  inferModuleType(text) {
+    const lower = text.toLowerCase();
+    if (lower.includes('week')) return 'week';
+    if (lower.includes('module')) return 'module';
+    if (lower.includes('unit')) return 'unit';
+    if (lower.includes('chapter')) return 'chapter';
+    if (lower.includes('lesson')) return 'lesson';
+    if (lower.includes('topic')) return 'topic';
+    if (lower.includes('session')) return 'session';
+    return 'section';
+  }
+
+  parseAssignmentsInContext(text, sections, courseInfo) {
+    const assignments = [];
+    
+    sections.forEach(section => {
+      // Parse each section for assignments
+      const sectionAssignments = this.extractAssignmentsFromSection(section, courseInfo);
+      assignments.push(...sectionAssignments);
+    });
+    
+    return assignments;
+  }
+
+  extractAssignmentsFromSection(section, courseInfo) {
+    const assignments = [];
+    const { content, number, title } = section;
+    
+    // Try all assignment patterns
+    Object.entries(this.patterns.assignment).forEach(([patternName, pattern]) => {
+      if (pattern instanceof RegExp) {
+        const matches = [...content.matchAll(new RegExp(pattern.source, pattern.flags))];
+        
+        matches.forEach(match => {
+          const assignment = this.createAssignmentFromMatch(match, patternName, section, courseInfo);
+          if (assignment && this.isValidAssignment(assignment)) {
+            assignments.push(assignment);
+          }
+        });
+      }
+    });
+    
+    return assignments;
+  }
+
+  parseStandaloneAssignments(text, courseInfo) {
+    const assignments = [];
+    
+    // Remove module content to avoid duplicates
+    let remainingText = text;
+    const moduleMatches = [...text.matchAll(this.patterns.module)];
+    
+    // Create a clean version without module content
+    if (moduleMatches.length > 0) {
+      const ranges = moduleMatches.map(m => ({ start: m.index, end: m.index + m[0].length }));
+      ranges.sort((a, b) => b.start - a.start);
+      
+      ranges.forEach(range => {
+        remainingText = remainingText.substring(0, range.start) + remainingText.substring(range.end);
+      });
+    }
+    
+    // Parse remaining text for assignments
+    Object.entries(this.patterns.assignment).forEach(([patternName, pattern]) => {
+      if (pattern instanceof RegExp) {
+        const matches = [...remainingText.matchAll(new RegExp(pattern.source, pattern.flags))];
+        
+        matches.forEach(match => {
+          const assignment = this.createAssignmentFromMatch(match, patternName, null, courseInfo);
+          if (assignment && this.isValidAssignment(assignment)) {
+            assignments.push(assignment);
+          }
+        });
+      }
+    });
+    
+    return assignments;
+  }
+
+  createAssignmentFromMatch(match, patternType, section, courseInfo) {
+    let title, dueDate, points;
+    
+    // Extract information based on pattern type
+    switch (patternType) {
+      case 'explicit':
+      case 'action':
+        title = match[1];
+        dueDate = match[2];
+        break;
+      
+      case 'duePattern':
+        title = match[1];
+        dueDate = match[2];
+        break;
+      
+      case 'withPoints':
+        title = match[1];
+        points = parseFloat(match[2]);
+        break;
+      
+      case 'bulletItems':
+      case 'numberedItems':
+      case 'letterItems':
+        title = match[1];
+        dueDate = match[2]; // Often contains date info
+        break;
+      
+      default:
+        title = match[1] || match[0];
+    }
+    
+    if (!title || title.length < 3) return null;
+    
+    // Clean and validate title
+    title = this.cleanTitle(title);
+    if (this.isIgnored(title)) return null;
+    
+    // Extract additional information from full match text
+    const fullText = match[0];
+    if (!points) {
+      points = this.extractPoints(fullText);
+    }
+    if (!dueDate) {
+      dueDate = this.extractDate(fullText);
+    }
+    
+    const assignment = {
+      id: `regex_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      title: title,
+      type: this.determineType(title, fullText),
+      dueDate: this.parseDate(dueDate),
+      dueTime: this.extractTime(dueDate || fullText),
+      points: points || 0,
+      course: courseInfo.code,
+      courseName: courseInfo.name,
+      module: section ? section.number : null,
+      moduleTitle: section ? section.title : null,
+      estimatedHours: 0,
+      confidence: this.calculateItemConfidence(match, patternType),
+      source: 'regex-parser',
+      extractedFrom: fullText
+    };
+    
+    // Estimate hours based on type and points
+    assignment.estimatedHours = this.estimateHours(assignment.type, assignment.title, assignment.points);
+    
+    return assignment;
+  }
+
+  cleanTitle(title) {
+    if (!title) return '';
+    
+    return title
+      .trim()
+      .replace(/^[-•·▪▫◦‣⁃\d.)\s]+/, '')  // Remove bullet points and numbers
+      .replace(/[:\-]\s*$/, '')             // Remove trailing colons/dashes
+      .replace(/\s+/g, ' ')                 // Normalize whitespace
+      .replace(/\[.*?\]/g, '')              // Remove bracketed content
+      .replace(/\(.*?\)$/, '')              // Remove trailing parentheses
+      .trim();
+  }
+
+  isIgnored(title) {
+    if (!title || title.length < 3) return true;
+    
+    const lowerTitle = title.toLowerCase();
+    
+    // Check against ignored terms
+    return this.keywords.ignoredTerms.some(term => 
+      lowerTitle.includes(term.toLowerCase())
+    );
+  }
+
+  isValidAssignment(assignment) {
+    // Validate assignment has minimum required information
+    if (!assignment.title || assignment.title.length < 3) return false;
+    
+    // Check if it's actually an assignment vs just informational text
+    const hasAssignmentIndicators = 
+      assignment.type !== 'unknown' ||
+      assignment.dueDate !== null ||
+      assignment.points > 0 ||
+      this.hasActionWord(assignment.title);
+    
+    return hasAssignmentIndicators;
+  }
+
+  hasActionWord(text) {
+    const lowerText = text.toLowerCase();
+    return this.keywords.actionWords.some(word => 
+      lowerText.includes(word)
+    );
+  }
+
+  determineType(title, fullText = '') {
+    const combinedText = `${title} ${fullText}`.toLowerCase();
+    
+    // Check each assignment type
+    const typeMap = {
+      'exam': ['exam', 'test', 'midterm', 'final', 'assessment'],
+      'quiz': ['quiz'],
+      'lab': ['lab', 'laboratory', 'practical', 'experiment'],
+      'clinical': ['clinical', 'rotation', 'practicum'],
+      'project': ['project', 'presentation', 'portfolio'],
+      'paper': ['paper', 'essay', 'report', 'write', 'writing'],
+      'discussion': ['discussion', 'forum', 'post', 'respond', 'response'],
+      'reading': ['read', 'chapter', 'article', 'textbook'],
+      'video': ['video', 'watch', 'view', 'lecture'],
+      'simulation': ['simulation', 'sim'],
+      'homework': ['homework', 'assignment', 'exercise', 'problem set']
+    };
+    
+    for (const [type, keywords] of Object.entries(typeMap)) {
+      if (keywords.some(keyword => combinedText.includes(keyword))) {
+        return type;
+      }
+    }
+    
+    // Check if it has action words suggesting it's an assignment
+    if (this.hasActionWord(combinedText)) {
+      return 'assignment';
+    }
+    
+    return 'unknown';
+  }
+
+  parseDate(dateStr) {
+    if (!dateStr) return null;
+    
+    const monthMap = {
+      'jan': 0, 'january': 0, 'feb': 1, 'february': 1,
+      'mar': 2, 'march': 2, 'apr': 3, 'april': 3,
+      'may': 4, 'jun': 5, 'june': 5, 'jul': 6, 'july': 6,
+      'aug': 7, 'august': 7, 'sep': 8, 'sept': 8, 'september': 8,
+      'oct': 9, 'october': 9, 'nov': 10, 'november': 10,
+      'dec': 11, 'december': 11
+    };
+    
+    // Try month day year format
+    const monthDayMatch = dateStr.match(this.patterns.date.monthDayYear);
+    if (monthDayMatch) {
+      const monthName = monthDayMatch[1].toLowerCase();
+      const month = monthMap[monthName] ?? monthMap[monthName.substring(0, 3)];
+      const day = parseInt(monthDayMatch[2]);
+      const year = monthDayMatch[3] ? parseInt(monthDayMatch[3]) : new Date().getFullYear();
+      
+      if (month !== undefined && day) {
+        const date = new Date(year, month, day);
+        
+        // If no year was specified and date is in the past, assume next year
+        if (!monthDayMatch[3] && date < new Date()) {
+          date.setFullYear(date.getFullYear() + 1);
+        }
+        
+        return date.toISOString().split('T')[0];
+      }
+    }
+    
+    // Try numeric format
+    const numericMatch = dateStr.match(this.patterns.date.numeric);
+    if (numericMatch) {
+      const [, month, day, year] = numericMatch;
+      const fullYear = year ? (year.length === 2 ? `20${year}` : year) : new Date().getFullYear();
+      return `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+    
+    // Try ISO format
+    const isoMatch = dateStr.match(this.patterns.date.iso);
+    if (isoMatch) {
+      return isoMatch[0];
+    }
+    
+    // Try to extract any date from the full text
+    const fullDateSearch = this.extractDate(dateStr);
+    if (fullDateSearch) {
+      return this.parseDate(fullDateSearch);
+    }
+    
+    return null;
+  }
+
+  extractDate(text) {
+    if (!text) return null;
+    
+    // Try all date patterns
+    for (const [patternName, pattern] of Object.entries(this.patterns.date)) {
+      if (pattern instanceof RegExp) {
+        const match = text.match(pattern);
+        if (match) {
+          return match[0];
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  extractTime(text) {
+    if (!text) return null;
+    
+    const timeMatch = text.match(this.patterns.time);
+    if (timeMatch) {
+      let hour = timeMatch[1] || timeMatch[5];
+      const minute = timeMatch[2] || '00';
+      const ampm = (timeMatch[4] || timeMatch[6] || 'PM').toUpperCase();
+      
+      // Validate hour
+      hour = parseInt(hour);
+      if (hour >= 1 && hour <= 12) {
+        return `${hour}:${minute} ${ampm}`;
+      }
+    }
+    
+    // Default times based on assignment type
+    if (text && text.toLowerCase().includes('midnight')) return '11:59 PM';
+    if (text && text.toLowerCase().includes('noon')) return '12:00 PM';
+    if (text && text.toLowerCase().includes('morning')) return '9:00 AM';
+    if (text && text.toLowerCase().includes('evening')) return '5:00 PM';
+    
+    return null;
+  }
+
+  extractPoints(text) {
+    if (!text) return 0;
+    
+    const pointsMatches = [...text.matchAll(this.patterns.points)];
+    if (pointsMatches.length > 0) {
+      // Return the maximum points value (total possible)
+      const values = pointsMatches.map(m => parseFloat(m[2] || m[1]));
+      return Math.max(...values);
+    }
+    
+    // Check for percentage
+    const percentMatch = text.match(this.patterns.percentage);
+    if (percentMatch) {
+      return parseFloat(percentMatch[1]);
+    }
+    
+    return 0;
+  }
+
+  estimateHours(type, title, points) {
+    // Base estimates by type
+    const baseHours = {
+      'exam': 4,
+      'quiz': 1.5,
+      'lab': 3,
+      'clinical': 8,
+      'project': 6,
+      'paper': 5,
+      'discussion': 1,
+      'reading': 2,
+      'video': 1,
+      'simulation': 4,
+      'homework': 2,
+      'assignment': 2,
+      'unknown': 1
+    };
+    
+    let hours = baseHours[type] || 2;
+    
+    // Adjust based on points
+    if (points > 0) {
+      if (points >= 100) hours *= 2;
+      else if (points >= 50) hours *= 1.5;
+      else if (points >= 25) hours *= 1.2;
+      else if (points <= 10) hours *= 0.8;
+    }
+    
+    // Adjust based on keywords in title
+    const lowerTitle = title.toLowerCase();
+    if (lowerTitle.includes('final') || lowerTitle.includes('comprehensive')) {
+      hours *= 1.5;
+    }
+    if (lowerTitle.includes('group') || lowerTitle.includes('team')) {
+      hours *= 1.2;
+    }
+    if (lowerTitle.includes('short') || lowerTitle.includes('brief')) {
+      hours *= 0.7;
+    }
+    if (lowerTitle.includes('major') || lowerTitle.includes('semester')) {
+      hours *= 1.5;
+    }
+    
+    return Math.round(hours * 10) / 10;
+  }
+
+  extractEvents(text, courseInfo) {
+    const events = [];
+    
+    // Look for class meeting patterns
+    const timeSlotPattern = /(\d{1,2}:\d{2}\s*(?:am|pm))\s*[-–]\s*(\d{1,2}:\d{2}\s*(?:am|pm))/gi;
+    const dayTimePattern = /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)s?\s+(\d{1,2}:\d{2}\s*(?:am|pm))/gi;
+    
+    // Extract recurring class times
+    const dayTimeMatches = [...text.matchAll(dayTimePattern)];
+    dayTimeMatches.forEach(match => {
+      events.push({
+        type: 'class',
+        day: match[1],
+        time: match[2],
+        course: courseInfo.code,
+        recurring: true
+      });
+    });
+    
+    return events;
+  }
+
+  calculateItemConfidence(match, patternType) {
+    // Confidence based on pattern type and match quality
+    const patternConfidence = {
+      'explicit': 0.9,
+      'action': 0.8,
+      'duePattern': 0.85,
+      'withPoints': 0.8,
+      'bulletItems': 0.7,
+      'numberedItems': 0.7,
+      'letterItems': 0.6
+    };
+    
+    let confidence = patternConfidence[patternType] || 0.5;
+    
+    // Boost confidence if we found additional information
+    if (match[2]) confidence += 0.05; // Has date or additional info
+    if (match[3]) confidence += 0.05; // Has even more info
+    
+    return Math.min(confidence, 0.95);
+  }
+
+  calculateConfidence(assignments, text) {
+    if (assignments.length === 0) return 0;
+    
+    // Base confidence on number of assignments found
+    let confidence = Math.min(0.5 + (assignments.length * 0.02), 0.8);
+    
+    // Boost if we found dates
+    const withDates = assignments.filter(a => a.dueDate).length;
+    confidence += (withDates / assignments.length) * 0.1;
+    
+    // Boost if we found points
+    const withPoints = assignments.filter(a => a.points > 0).length;
+    confidence += (withPoints / assignments.length) * 0.05;
+    
+    // Boost if we found varied assignment types
+    const types = new Set(assignments.map(a => a.type));
+    confidence += Math.min(types.size * 0.02, 0.1);
+    
+    // Penalize if too many unknowns
+    const unknowns = assignments.filter(a => a.type === 'unknown').length;
+    confidence -= (unknowns / assignments.length) * 0.1;
+    
+    return Math.max(0.1, Math.min(confidence, 0.95));
+  }
+
+  deduplicateAndClean(assignments) {
+    // Remove duplicates based on title and date
+    const seen = new Map();
+    const unique = [];
+    
+    assignments.forEach(assignment => {
+      const key = `${assignment.title.toLowerCase()}-${assignment.dueDate || 'no-date'}-${assignment.module || 'no-module'}`;
+      
+      if (!seen.has(key)) {
+        seen.set(key, assignment);
+        unique.push(assignment);
+      } else {
+        // Keep the one with more information
+        const existing = seen.get(key);
+        if (this.hasMoreInfo(assignment, existing)) {
+          const index = unique.indexOf(existing);
+          unique[index] = assignment;
+          seen.set(key, assignment);
+        }
+      }
+    });
+    
+    // Sort by date, then by module
+    unique.sort((a, b) => {
+      if (a.dueDate && b.dueDate) {
+        return new Date(a.dueDate) - new Date(b.dueDate);
+      }
+      if (a.module && b.module) {
+        return a.module - b.module;
+      }
+      return 0;
+    });
+    
+    return unique;
+  }
+
+  hasMoreInfo(a, b) {
+    let aScore = 0;
+    let bScore = 0;
+    
+    // Score based on completeness
+    if (a.dueDate) aScore++;
+    if (b.dueDate) bScore++;
+    
+    if (a.points > 0) aScore++;
+    if (b.points > 0) bScore++;
+    
+    if (a.type !== 'unknown') aScore++;
+    if (b.type !== 'unknown') bScore++;
+    
+    if (a.confidence > b.confidence) aScore++;
+    if (b.confidence > a.confidence) bScore++;
+    
+    if (a.extractedFrom.length > b.extractedFrom.length) aScore++;
+    if (b.extractedFrom.length > a.extractedFrom.length) bScore++;
+    
+    return aScore > bScore;
+  }
+}

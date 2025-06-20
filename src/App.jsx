@@ -1,14 +1,126 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Calendar, Settings, Upload, Download, Plus, Edit2, Trash2, Save, X, Brain, FileText, Grid, List, Clock, Users, Sparkles, Zap, AlertCircle } from 'lucide-react';
+import { BookOpen, Calendar, Settings, Upload, Download, Plus, Edit2, Trash2, Save, X, Brain, FileText, Grid, List, Clock, Users, Sparkles, Zap, AlertCircle, Moon, Sun, RefreshCw, Menu, ChevronLeft, ChevronRight, CheckCircle, Circle } from 'lucide-react';
+import { ParserUI } from './components/Parser';
+import { useParserIntegration } from './hooks/useParserIntegration';
+
+// Import the actual CalendarView component
 import CalendarView from './components/Calendar/CalendarView';
 
 // Import actual parsers
 import { StudioraDualParser } from './services/StudioraDualParser.js';
 
+// Touch gesture detection hook
+function useSwipeGesture(onSwipeLeft, onSwipeRight, threshold = 50) {
+  const touchStart = useRef({ x: null, y: null });
+  const touchEnd = useRef({ x: null, y: null });
+
+  const handleTouchStart = (e) => {
+    touchStart.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY
+    };
+  };
+
+  const handleTouchMove = (e) => {
+    touchEnd.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY
+    };
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart.current.x || !touchEnd.current.x) return;
+
+    const diffX = touchStart.current.x - touchEnd.current.x;
+    const diffY = touchStart.current.y - touchEnd.current.y;
+
+    // Only trigger if horizontal swipe is greater than vertical
+    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > threshold) {
+      if (diffX > 0 && onSwipeLeft) {
+        onSwipeLeft();
+      } else if (diffX < 0 && onSwipeRight) {
+        onSwipeRight();
+      }
+    }
+
+    touchStart.current = { x: null, y: null };
+    touchEnd.current = { x: null, y: null };
+  };
+
+  return {
+    onTouchStart: handleTouchStart,
+    onTouchMove: handleTouchMove,
+    onTouchEnd: handleTouchEnd
+  };
+}
+
+// Pull to Refresh Component
+function PullToRefresh({ onRefresh, children }) {
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [startY, setStartY] = useState(0);
+  const contentRef = useRef(null);
+
+  const handleTouchStart = (e) => {
+    if (contentRef.current?.scrollTop === 0) {
+      setStartY(e.touches[0].clientY);
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (!startY || contentRef.current?.scrollTop > 0) return;
+    
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startY;
+    
+    if (diff > 0) {
+      e.preventDefault();
+      setPullDistance(Math.min(diff * 0.4, 100));
+    }
+  };
+
+  const handleTouchEnd = async () => {
+    if (pullDistance > 70 && onRefresh) {
+      setIsRefreshing(true);
+      await onRefresh();
+      setIsRefreshing(false);
+    }
+    setPullDistance(0);
+    setStartY(0);
+  };
+
+  return (
+    <div className="relative h-full overflow-hidden">
+      <div
+        className={`absolute inset-x-0 top-0 flex items-center justify-center transition-all duration-300 ${
+          pullDistance > 0 ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{ height: pullDistance, transform: `translateY(${pullDistance - 50}px)` }}
+      >
+        <RefreshCw 
+          className={`h-6 w-6 text-blue-600 ${isRefreshing ? 'animate-spin' : ''}`}
+          style={{ transform: `rotate(${pullDistance * 3}deg)` }}
+        />
+      </div>
+      <div
+        ref={contentRef}
+        className="h-full overflow-y-auto"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ transform: `translateY(${pullDistance}px)` }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // Data Management System
 class DataManager {
   static STORAGE_KEY = 'studiora_complete_data';
   static VERSION = '1.0.0';
+  static THEME_KEY = 'studiora_theme';
 
   static saveData(data) {
     const saveData = {
@@ -726,6 +838,7 @@ function CourseCard({ course, isSelected, assignmentCount, onSelect, onEdit, onD
             <Save size={14} />
           </button>
           <button onClick={() => setIsEditing(false)} className="p-1 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+          <button onClick={() => setIsEditing(false)} className="p-1 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
             <X size={14} />
           </button>
         </div>
@@ -744,10 +857,13 @@ function CourseCard({ course, isSelected, assignmentCount, onSelect, onEdit, onD
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-sm truncate dark:text-white">{course.code}</h3>
           <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{course.name}</p>
+          <h3 className="font-medium text-sm truncate dark:text-white">{course.code}</h3>
+          <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{course.name}</p>
         </div>
         <div className="flex space-x-1 ml-2">
           <button
             onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
             className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
           >
             <Edit2 size={12} />
@@ -761,6 +877,7 @@ function CourseCard({ course, isSelected, assignmentCount, onSelect, onEdit, onD
         </div>
       </div>
       
+      <div className="text-xs text-gray-500 dark:text-gray-400">
       <div className="text-xs text-gray-500 dark:text-gray-400">
         {assignmentCount} assignments
       </div>
@@ -778,8 +895,7 @@ function AddCourseModal({ onClose, onAdd }) {
     credits: '3'
   });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = () => {
     if (formData.code.trim() && formData.name.trim()) {
       onAdd(formData);
     }
@@ -788,7 +904,10 @@ function AddCourseModal({ onClose, onAdd }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg max-w-md w-full p-6">
         <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold dark:text-white">Add New Course</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
           <h2 className="text-xl font-semibold dark:text-white">Add New Course</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <X size={20} />
@@ -798,22 +917,27 @@ function AddCourseModal({ onClose, onAdd }) {
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1 dark:text-gray-300">Course Code *</label>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Course Code *</label>
             <input
               type="text"
               value={formData.code}
               onChange={(e) => setFormData({ ...formData, code: e.target.value })}
               className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               placeholder="e.g., NURS330"
             />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Use official course codes for best results</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Use official course codes for best results</p>
           </div>
           
           <div>
             <label className="block text-sm font-medium mb-1 dark:text-gray-300">Course Name *</label>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Course Name *</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               placeholder="e.g., Nursing of the Childbearing Family"
             />
@@ -821,10 +945,12 @@ function AddCourseModal({ onClose, onAdd }) {
           
           <div>
             <label className="block text-sm font-medium mb-1 dark:text-gray-300">Instructor</label>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Instructor</label>
             <input
               type="text"
               value={formData.instructor}
               onChange={(e) => setFormData({ ...formData, instructor: e.target.value })}
+              className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               placeholder="Professor Name"
             />
@@ -833,9 +959,11 @@ function AddCourseModal({ onClose, onAdd }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1 dark:text-gray-300">Semester</label>
+              <label className="block text-sm font-medium mb-1 dark:text-gray-300">Semester</label>
               <select
                 value={formData.semester}
                 onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               >
                 <option>Spring 2025</option>
@@ -845,10 +973,12 @@ function AddCourseModal({ onClose, onAdd }) {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 dark:text-gray-300">Credits</label>
+              <label className="block text-sm font-medium mb-1 dark:text-gray-300">Credits</label>
               <input
                 type="number"
                 value={formData.credits}
                 onChange={(e) => setFormData({ ...formData, credits: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                 min="1"
                 max="6"
@@ -870,7 +1000,7 @@ function AddCourseModal({ onClose, onAdd }) {
   );
 }
 
-// Import Wizard Component
+// Import Wizard Component with FULL parsing functionality
 function ImportWizard({ courses, onClose, onComplete }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [importData, setImportData] = useState({
@@ -951,16 +1081,18 @@ function ImportWizard({ courses, onClose, onComplete }) {
               <p className="text-sm text-gray-600 dark:text-gray-400">Step {currentStep} of 3</p>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
               <X size={20} />
             </button>
           </div>
           
-          <div className="flex items-center mt-4 space-x-4">
+          <div className="flex items-center mt-4 space-x-2 sm:space-x-4">
             {[1, 2, 3].map(step => (
               <div key={step} className="flex items-center">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
                   step === currentStep ? 'bg-blue-600 text-white' :
                   step < currentStep ? 'bg-green-600 text-white' :
+                  'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                   'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 }`}>
                   {step}
@@ -975,8 +1107,10 @@ function ImportWizard({ courses, onClose, onComplete }) {
           {currentStep === 1 && (
             <div>
               <h3 className="text-lg font-medium mb-4 dark:text-white">Select Course</h3>
+              <h3 className="text-lg font-medium mb-4 dark:text-white">Select Course</h3>
               <div className="space-y-3">
                 {courses.map(course => (
+                  <label key={course.id} className="flex items-center p-3 border dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
                   <label key={course.id} className="flex items-center p-3 border dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
                     <input
                       type="radio"
@@ -989,6 +1123,8 @@ function ImportWizard({ courses, onClose, onComplete }) {
                     <div>
                       <div className="font-medium dark:text-white">{course.code}</div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">{course.name}</div>
+                      <div className="font-medium dark:text-white">{course.code}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">{course.name}</div>
                     </div>
                   </label>
                 ))}
@@ -999,8 +1135,10 @@ function ImportWizard({ courses, onClose, onComplete }) {
           {currentStep === 2 && (
             <div>
               <h3 className="text-lg font-medium mb-4 dark:text-white">What type of document are you importing?</h3>
+              <h3 className="text-lg font-medium mb-4 dark:text-white">What type of document are you importing?</h3>
               <div className="space-y-3">
                 {documentTypes.map(type => (
+                  <label key={type.id} className="flex items-start p-3 border dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
                   <label key={type.id} className="flex items-start p-3 border dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
                     <input
                       type="radio"
@@ -1013,6 +1151,8 @@ function ImportWizard({ courses, onClose, onComplete }) {
                     <div>
                       <div className="font-medium dark:text-white">{type.name}</div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">{type.description}</div>
+                      <div className="font-medium dark:text-white">{type.name}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">{type.description}</div>
                     </div>
                   </label>
                 ))}
@@ -1021,8 +1161,9 @@ function ImportWizard({ courses, onClose, onComplete }) {
           )}
           
           {currentStep === 3 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
+                <h3 className="text-lg font-medium mb-4 dark:text-white">Paste Your Content</h3>
                 <h3 className="text-lg font-medium mb-4 dark:text-white">Paste Your Content</h3>
                 <textarea
                   value={importData.text}
@@ -1031,6 +1172,7 @@ function ImportWizard({ courses, onClose, onComplete }) {
                   className="w-full h-64 p-3 border dark:border-gray-700 rounded-lg text-sm font-mono resize-none dark:bg-gray-700 dark:text-white"
                   disabled={isLoading}
                 />
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   {importData.text.length} characters
                 </div>
@@ -1041,14 +1183,15 @@ function ImportWizard({ courses, onClose, onComplete }) {
                 <div className="h-64 border dark:border-gray-700 rounded-lg p-3 overflow-y-auto bg-gray-50 dark:bg-gray-900 text-xs font-mono">
                   {progress.length === 0 ? (
                     <p className="text-gray-500 dark:text-gray-400">Progress will appear here...</p>
+                    <p className="text-gray-500 dark:text-gray-400">Progress will appear here...</p>
                   ) : (
                     progress.map((item, idx) => (
                       <div key={idx} className="mb-1">
                         <span className="text-gray-500 dark:text-gray-400">[{item.timestamp}]</span>
                         <span className={`ml-2 ${
-                          item.stage === 'error' ? 'text-red-600' :
-                          item.stage === 'complete' ? 'text-green-600' :
-                          'text-blue-600'
+                          item.stage === 'error' ? 'text-red-600 dark:text-red-400' :
+                          item.stage === 'complete' ? 'text-green-600 dark:text-green-400' :
+                          'text-blue-600 dark:text-blue-400'
                         }`}>
                           {item.message}
                         </span>
@@ -1082,7 +1225,7 @@ function ImportWizard({ courses, onClose, onComplete }) {
                   (currentStep === 1 && !importData.courseId) ||
                   (currentStep === 2 && !importData.documentType)
                 }
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="flex-1 sm:flex-none px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 Next
               </button>
@@ -1090,7 +1233,7 @@ function ImportWizard({ courses, onClose, onComplete }) {
               <button
                 onClick={handleParse}
                 disabled={!importData.text.trim() || isLoading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+                className="flex-1 sm:flex-none px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center space-x-2"
               >
                 {isLoading ? (
                   <>
@@ -1276,9 +1419,12 @@ function CourseDashboard({ course, assignments, completedAssignments, onToggleAs
           <div>
             <h2 className="text-xl font-semibold dark:text-white">{course.code}</h2>
             <p className="text-gray-600 dark:text-gray-400">{course.name}</p>
+            <h2 className="text-xl font-semibold dark:text-white">{course.code}</h2>
+            <p className="text-gray-600 dark:text-gray-400">{course.name}</p>
           </div>
           <button
             onClick={onImport}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
             className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700"
           >
             <Upload size={16} />
@@ -1305,15 +1451,20 @@ function CourseDashboard({ course, assignments, completedAssignments, onToggleAs
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
         <div className="p-4 border-b dark:border-gray-700">
           <h3 className="font-semibold dark:text-white">Assignments</h3>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div className="p-4 border-b dark:border-gray-700">
+          <h3 className="font-semibold dark:text-white">Assignments</h3>
         </div>
         <div className="p-4">
           {assignments.length === 0 ? (
             <div className="text-center py-8 text-gray-500 dark:text-gray-400">
               <FileText className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <FileText className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
               <p className="mt-2">No assignments imported yet</p>
               <button
                 onClick={onImport}
-                className="mt-2 text-blue-600 hover:text-blue-800"
+                className="mt-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
               >
                 Import course data to get started
               </button>
@@ -1361,20 +1512,26 @@ function AssignmentCard({ assignment, isCompleted, onToggle }) {
     }`}>
       
       <div className="flex items-start space-x-3">
-        <input
-          type="checkbox"
-          checked={isCompleted}
-          onChange={onToggle}
-          className="mt-1 h-4 w-4 text-blue-600 rounded"
-        />
+        <button
+          onClick={onToggle}
+          className="mt-1 flex-shrink-0"
+        >
+          {isCompleted ? (
+            <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+          ) : (
+            <Circle className="h-5 w-5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400" />
+          )}
+        </button>
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-2 mb-1">
             <span className="text-lg">{getTypeIcon(assignment.type)}</span>
             <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-1 rounded">
+            <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-2 py-1 rounded">
               {assignment.type}
             </span>
             {assignment.confidence && (
+              <span className="text-xs text-gray-500 dark:text-gray-400">
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {Math.round(assignment.confidence * 100)}%
               </span>
@@ -1426,8 +1583,10 @@ function DataView({ appData }) {
       <div className="space-y-4">
         <div>
           <h3 className="font-medium dark:text-white">Courses ({appData.courses.length})</h3>
+          <h3 className="font-medium dark:text-white">Courses ({appData.courses.length})</h3>
           <div className="mt-2 space-y-1">
             {appData.courses.map(course => (
+              <div key={course.id} className="text-sm text-gray-600 dark:text-gray-400">
               <div key={course.id} className="text-sm text-gray-600 dark:text-gray-400">
                 {course.code} - {course.name}
               </div>
@@ -1437,8 +1596,10 @@ function DataView({ appData }) {
         
         <div>
           <h3 className="font-medium dark:text-white">Recent Parsing History</h3>
+          <h3 className="font-medium dark:text-white">Recent Parsing History</h3>
           <div className="mt-2 space-y-1">
             {appData.parsingHistory.slice(-5).map(history => (
+              <div key={history.id} className="text-sm text-gray-600 dark:text-gray-400">
               <div key={history.id} className="text-sm text-gray-600 dark:text-gray-400">
                 {new Date(history.timestamp).toLocaleDateString()} - {history.assignmentCount} assignments from {history.documentType}
               </div>
@@ -1446,6 +1607,373 @@ function DataView({ appData }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Main App Component with ALL features
+function StudioraNursingPlanner() {
+  const [appData, setAppData] = useState(DataManager.loadData());
+  const [showAddCourse, setShowAddCourse] = useState(false);
+  const [showImportWizard, setShowImportWizard] = useState(false);
+  const [showDataManager, setShowDataManager] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [completedAssignments, setCompletedAssignments] = useState(new Set());
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(DataManager.getTheme() === 'dark');
+
+  // ADD PARSER INTEGRATION HOOK HERE
+  const { ParserButton, ParserModal } = useParserIntegration({
+    onAssignmentsImported: (results) => {
+      // Generate unique IDs for each assignment
+      const newAssignments = results.assignments.map(assignment => ({
+        ...assignment,
+        id: `assignment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        courseId: selectedCourse?.id || appData.courses[0]?.id,
+        importedAt: new Date().toISOString()
+      }));
+
+      setAppData(prev => ({
+        ...prev,
+        assignments: [...prev.assignments, ...newAssignments],
+        modules: [...prev.modules, ...(results.modules || [])],
+        parsingHistory: [...prev.parsingHistory, {
+          id: `parse_${Date.now()}`,
+          courseId: selectedCourse?.id || appData.courses[0]?.id,
+          documentType: 'parser-integration',
+          assignmentCount: newAssignments.length,
+          confidence: results.metadata?.confidence || 0.9,
+          timestamp: new Date().toISOString()
+        }]
+      }));
+      
+      // Optional: Show success message if you have a toast/notification system
+      console.log(`Successfully imported ${results.assignments.length} assignments`);
+    },
+    isDark: isDarkMode
+  });
+
+  // Apply dark mode class to document
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    DataManager.setTheme(isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
+  // Auto-save when data changes
+  useEffect(() => {
+    DataManager.saveData(appData);
+  }, [appData]);
+
+  // Select first course by default
+  useEffect(() => {
+    if (!selectedCourse && appData.courses.length > 0) {
+      setSelectedCourse(appData.courses[0]);
+    }
+  }, [appData.courses, selectedCourse]);
+
+  // Swipe gesture handlers
+  const mainSwipeHandlers = useSwipeGesture(
+    () => {
+      if (mobileNavOpen) setMobileNavOpen(false);
+    },
+    () => {
+      if (!mobileNavOpen && window.innerWidth < 1024) setMobileNavOpen(true);
+    }
+  );
+
+  const handleRefresh = async () => {
+    // Simulate refresh - in real app, fetch new data
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    console.log('Refreshed at', new Date().toLocaleTimeString());
+  };
+
+  const addCourse = (courseData) => {
+    const newCourse = {
+      id: `course_${Date.now()}`,
+      ...courseData,
+      createdAt: new Date().toISOString()
+    };
+    
+    setAppData(prev => ({
+      ...prev,
+      courses: [...prev.courses, newCourse]
+    }));
+    
+    setSelectedCourse(newCourse);
+    setShowAddCourse(false);
+  };
+
+  const updateCourse = (courseId, updates) => {
+    setAppData(prev => ({
+      ...prev,
+      courses: prev.courses.map(c => 
+        c.id === courseId ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c
+      )
+    }));
+  };
+
+  const deleteCourse = (courseId) => {
+    if (window.confirm('Are you sure you want to delete this course and all its assignments?')) {
+      setAppData(prev => ({
+        ...prev,
+        courses: prev.courses.filter(c => c.id !== courseId),
+        assignments: prev.assignments.filter(a => a.courseId !== courseId),
+        studyBlocks: prev.studyBlocks.filter(s => s.courseId !== courseId)
+      }));
+      
+      if (selectedCourse?.id === courseId) {
+        setSelectedCourse(appData.courses.find(c => c.id !== courseId) || null);
+      }
+    }
+  };
+
+  const handleImportComplete = (parseResults, importOptions) => {
+    const newAssignments = parseResults.assignments.map(assignment => ({
+      ...assignment,
+      courseId: importOptions.courseId,
+      importedAt: new Date().toISOString()
+    }));
+    
+    setAppData(prev => ({
+      ...prev,
+      assignments: [...prev.assignments, ...newAssignments],
+      parsingHistory: [...prev.parsingHistory, {
+        id: `parse_${Date.now()}`,
+        courseId: importOptions.courseId,
+        documentType: importOptions.documentType,
+        assignmentCount: newAssignments.length,
+        confidence: parseResults.metadata?.confidence || parseResults.confidence || 0,
+        timestamp: new Date().toISOString()
+      }]
+    }));
+    
+    setShowImportWizard(false);
+  };
+
+  const handleDataImport = async (importedData) => {
+    setAppData(importedData);
+    setShowDataManager(false);
+    
+    if (importedData.courses.length > 0) {
+      setSelectedCourse(importedData.courses[0]);
+    }
+  };
+
+  const toggleAssignment = (assignmentId) => {
+    const newCompleted = new Set(completedAssignments);
+    if (newCompleted.has(assignmentId)) {
+      newCompleted.delete(assignmentId);
+    } else {
+      newCompleted.add(assignmentId);
+    }
+    setCompletedAssignments(newCompleted);
+  };
+
+  const updateAssignment = (assignmentId, updates) => {
+    setAppData(prev => ({
+      ...prev,
+      assignments: prev.assignments.map(a => 
+        a.id === assignmentId 
+          ? { ...a, ...updates, updatedAt: new Date().toISOString() } 
+          : a
+      )
+    }));
+  };
+
+  const addAssignment = (assignmentData) => {
+    const newAssignment = {
+      id: `assignment_${Date.now()}`,
+      ...assignmentData,
+      courseId: selectedCourse.id,
+      createdAt: new Date().toISOString(),
+      source: 'manual'
+    };
+    
+    setAppData(prev => ({
+      ...prev,
+      assignments: [...prev.assignments, newAssignment]
+    }));
+  };
+
+  const courseAssignments = selectedCourse 
+    ? appData.assignments.filter(a => a.courseId === selectedCourse.id)
+    : [];
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+      <Header 
+        onMenuClick={() => setMobileNavOpen(true)}
+        onAddCourse={() => setShowAddCourse(true)}
+        onImport={() => setShowImportWizard(true)}
+        onDataManager={() => setShowDataManager(true)}
+        isDark={isDarkMode}
+        onDarkModeToggle={() => setIsDarkMode(!isDarkMode)}
+        ParserButton={<ParserButton />}
+      />
+
+      <MobileNav
+        isOpen={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+      />
+
+      <div className="flex" {...mainSwipeHandlers}>
+        {/* Desktop Sidebar */}
+        <aside className="hidden lg:block w-80 bg-white dark:bg-gray-800 shadow-sm border-r dark:border-gray-700 overflow-y-auto h-[calc(100vh-64px)]">
+          <div className="p-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-semibold dark:text-white">My Courses</h2>
+              <button
+                onClick={() => setShowAddCourse(true)}
+                className="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                title="Add Course"
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            
+            <div className="space-y-2">
+              {appData.courses.map(course => (
+                <CourseCard
+                  key={course.id}
+                  course={course}
+                  isSelected={selectedCourse?.id === course.id}
+                  assignmentCount={appData.assignments.filter(a => a.courseId === course.id).length}
+                  onSelect={() => setSelectedCourse(course)}
+                  onEdit={(updates) => updateCourse(course.id, updates)}
+                  onDelete={() => deleteCourse(course.id)}
+                />
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto h-[calc(100vh-64px)]">
+          <PullToRefresh onRefresh={handleRefresh}>
+            <div className="p-4 sm:p-6">
+              {appData.courses.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="max-w-md mx-auto">
+                    <BookOpen className="mx-auto h-16 w-16 text-gray-300 dark:text-gray-600" />
+                    <h2 className="mt-4 text-xl font-semibold text-gray-900 dark:text-white">Welcome to Studiora!</h2>
+                    <p className="mt-2 text-gray-600 dark:text-gray-400">
+                      Start by adding your first course to begin organizing your assignments and schedule.
+                    </p>
+                    <button
+                      onClick={() => setShowAddCourse(true)}
+                      className="mt-6 bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center space-x-2 mx-auto hover:bg-blue-700"
+                    >
+                      <Plus size={20} />
+                      <span>Add Your First Course</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Mobile Course Selector */}
+                  <div className="lg:hidden mb-4">
+                    <select
+                      value={selectedCourse?.id || ''}
+                      onChange={(e) => {
+                        const course = appData.courses.find(c => c.id === e.target.value);
+                        setSelectedCourse(course);
+                      }}
+                      className="w-full px-3 py-2 border dark:border-gray-600 rounded-lg text-base dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="">Select a course</option>
+                      {appData.courses.map(course => (
+                        <option key={course.id} value={course.id}>
+                          {course.code} - {course.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* View Tabs */}
+                  <div className="flex space-x-2 mb-4">
+                    {['dashboard', 'calendar', 'data'].map(view => (
+                      <button
+                        key={view}
+                        onClick={() => setCurrentView(view)}
+                        className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-sm capitalize ${
+                          currentView === view 
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {view === 'dashboard' ? '📊 Dashboard' :
+                        view === 'calendar' ? '📅 Calendar' :
+                        '📁 Data'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Content based on view */}
+                  {selectedCourse ? (
+                    currentView === 'dashboard' ? (
+                      <CourseDashboard
+                        course={selectedCourse}
+                        assignments={courseAssignments}
+                        completedAssignments={completedAssignments}
+                        onToggleAssignment={toggleAssignment}
+                        onImport={() => setShowImportWizard(true)}
+                      />
+                    ) : currentView === 'calendar' ? (
+                      <CalendarView
+                        course={selectedCourse}
+                        assignments={courseAssignments}
+                        studyBlocks={appData.studyBlocks.filter(s => s.courseId === selectedCourse.id)}
+                        calendarEvents={appData.calendarEvents?.filter(e => e.courseId === selectedCourse.id) || []}
+                        onUpdateAssignment={updateAssignment}
+                        onAddAssignment={addAssignment}
+                      />
+                    ) : (
+                      <DataView appData={appData} />
+                    )
+                  ) : (
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
+                      <BookOpen className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
+                      <p className="mt-4 text-gray-600 dark:text-gray-400">Select a course to view its content</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </PullToRefresh>
+        </main>
+      </div>
+
+      {/* Modals */}
+      {showAddCourse && (
+        <AddCourseModal onClose={() => setShowAddCourse(false)} onAdd={addCourse} />
+      )}
+      
+      {showImportWizard && (
+        <ImportWizard
+          courses={appData.courses}
+          onClose={() => setShowImportWizard(false)}
+          onComplete={handleImportComplete}
+        />
+      )}
+      
+      {showDataManager && (
+        <DataManagerModal
+          appData={appData}
+          onClose={() => setShowDataManager(false)}
+          onImport={handleDataImport}
+          onExport={() => DataManager.exportData(appData)}
+        />
+      )}
+
+      {/* Parser Modal - Added at the end */}
+      <ParserModal />
     </div>
   );
 }

@@ -97,6 +97,164 @@ export class StudiorAIService {
     }
   }
 
+  // STAGE 2: Parse remainder text after regex extraction
+  async parseRemainder(remainingText, context) {
+    if (!this.apiKey) {
+      throw new Error('AI service requires API key');
+    }
+
+    const prompt = `You are analyzing REMAINDER text after regex extraction. The regex parser has already found these assignments:
+
+EXISTING ASSIGNMENTS FOUND BY REGEX:
+${JSON.stringify(context.existingAssignments, null, 2)}
+
+DOCUMENT TYPE: ${context.documentType}
+COURSE: ${context.course}
+
+REMAINING TEXT TO ANALYZE:
+${remainingText}
+
+Your task is to find ONLY NEW assignments that the regex parser missed. Look for:
+- Implicit assignments ("be prepared to discuss", "review before class")
+- Assignments in unusual formats
+- Assignments mentioned in context but not as clear directives
+- Preparation requirements for labs/clinicals
+- Hidden deadlines in narrative text
+
+DO NOT re-extract assignments already found by regex.
+
+RESPOND WITH ONLY VALID JSON (no markdown, no code blocks):
+{
+  "assignments": [
+    {
+      "text": "Assignment description",
+      "date": "YYYY-MM-DD or null",
+      "type": "reading|quiz|exam|assignment|lab|discussion|clinical|simulation|prep",
+      "hours": 1.5,
+      "course": "${context.course}",
+      "confidence": 0.8,
+      "extractionReason": "Why this was identified as a NEW assignment"
+    }
+  ]
+}`;
+
+    try {
+      const result = await this.makeRequest(prompt, {
+        temperature: 0.3,
+        taskType: 'remainder-parsing',
+        maxTokens: 4000
+      });
+
+      // Validate and enhance the result
+      return {
+        assignments: (result.assignments || []).map((assignment, idx) => ({
+          ...assignment,
+          id: assignment.id || `ai_remainder_${Date.now()}_${idx}`,
+          date: this.validateDate(assignment.date),
+          source: 'ai-remainder'
+        }))
+      };
+    } catch (error) {
+      console.error('🤖 AI remainder parsing failed:', error);
+      throw error;
+    }
+  }
+
+  // STAGE 3: Validate and enhance regex results
+  async validateAssignments(validationRequest) {
+    if (!this.apiKey) {
+      throw new Error('AI service requires API key');
+    }
+
+    const { originalText, regexAssignments, documentType, course } = validationRequest;
+
+    const prompt = `You are validating and enhancing assignments found by regex parsing.
+
+ORIGINAL DOCUMENT (first 3000 chars):
+${originalText}
+
+DOCUMENT TYPE: ${documentType}
+COURSE: ${course}
+
+REGEX FOUND THESE ASSIGNMENTS:
+${JSON.stringify(regexAssignments.map(a => ({
+  text: a.text,
+  date: a.date,
+  type: a.type,
+  points: a.points,
+  module: a.module
+})), null, 2)}
+
+YOUR TASKS:
+1. VALIDATE each assignment (is it real or a false positive?)
+2. FIX missing dates by looking at context
+3. IMPROVE vague descriptions using surrounding text
+4. STANDARDIZE assignment types
+5. ADD missing information (points, hours, etc.)
+6. FLAG invalid entries for removal
+
+For dates, consider:
+- Module/week context
+- Sequence of assignments
+- Academic calendar (Spring 2025: May 5 - August 10)
+- Typical patterns (quizzes on Fridays, etc.)
+
+RESPOND WITH ONLY VALID JSON (no markdown, no code blocks):
+{
+  "validatedAssignments": [
+    {
+      "originalIndex": 0,
+      "isValid": true,
+      "text": "Enhanced assignment description",
+      "date": "YYYY-MM-DD",
+      "type": "standardized_type",
+      "hours": 1.5,
+      "points": 10,
+      "course": "${course}",
+      "confidence": 0.95,
+      "enhancementNotes": "What was improved"
+    }
+  ],
+  "confidence": 0.85,
+  "insights": [
+    "Pattern noticed or recommendation"
+  ]
+}`;
+
+    try {
+      const result = await this.makeRequest(prompt, {
+        temperature: 0.2,
+        taskType: 'validation-enhancement',
+        maxTokens: 8000
+      });
+
+      // Map validated assignments back with original IDs
+      const validatedAssignments = [];
+      
+      (result.validatedAssignments || []).forEach(validated => {
+        if (validated.isValid && validated.originalIndex < regexAssignments.length) {
+          const original = regexAssignments[validated.originalIndex];
+          validatedAssignments.push({
+            ...original,
+            ...validated,
+            id: original.id,
+            aiEnhanced: true,
+            date: this.validateDate(validated.date) || original.date
+          });
+        }
+      });
+
+      return {
+        validatedAssignments,
+        confidence: result.confidence || 0.7,
+        insights: result.insights || []
+      };
+    } catch (error) {
+      console.error('🤖 AI validation failed:', error);
+      throw error;
+    }
+  }
+
   getSystemPrompt(taskType) {
     const basePrompt = `You are Studiora's AI assistant, an expert in nursing education content parsing. You specialize in:
 - Nursing curricula (OB/GYN, Adult Health, NCLEX prep, Gerontology)
