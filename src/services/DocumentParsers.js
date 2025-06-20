@@ -92,7 +92,7 @@ class BaseCanvasParser {
         date.setFullYear(year + 1);
       }
       
-      return date.toISOString().split('T')[0];
+      return date.toLocaleDateString('en-CA');
     }
     
     // Try numeric format
@@ -371,7 +371,7 @@ class CanvasModulesParser extends BaseCanvasParser {
           
           const date = new Date(processedDate);
           if (!isNaN(date.getTime())) {
-            return date.toISOString().split('T')[0];
+            return date.toLocaleDateString('en-CA');
           }
         }
       }
@@ -380,7 +380,7 @@ class CanvasModulesParser extends BaseCanvasParser {
       const dateWithYear = dateStr.includes('202') ? dateStr : dateStr + ', 2025';
       const date = new Date(dateWithYear);
       if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
+        return date.toLocaleDateString('en-CA');
       }
     } catch (e) {
       console.warn('Failed to parse Canvas date:', dateStr);
@@ -947,7 +947,7 @@ class SyllabusParser extends BaseCanvasParser {
         const dateStr = match[1] || match[0];
         const date = new Date(dateStr + ', 2025');
         if (!isNaN(date.getTime())) {
-          return date.toISOString().split('T')[0];
+          return date.toLocaleDateString('en-CA');
         }
       }
     }
@@ -958,7 +958,7 @@ class SyllabusParser extends BaseCanvasParser {
       const semesterStart = new Date('2025-05-05'); // May 5, 2025
       const targetDate = new Date(semesterStart);
       targetDate.setDate(targetDate.getDate() + (weekNum - 1) * 7); // Sunday of that week
-      return targetDate.toISOString().split('T')[0];
+      return targetDate.toLocaleDateString('en-CA');
     }
     
     return null;
@@ -1150,7 +1150,7 @@ class ScheduleParser extends BaseCanvasParser {
       
       const date = new Date(fullDateStr);
       if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
+        return date.toLocaleDateString('en-CA');
       }
     } catch (e) {
       console.warn('Failed to parse schedule date:', dateStr);
@@ -1327,7 +1327,7 @@ class SherpathParser extends BaseCanvasParser {
         const year = match[3] ? parseInt(match[3]) : 2025;
         
         const date = new Date(year, month, day);
-        return date.toISOString().split('T')[0];
+        return date.toLocaleDateString('en-CA');
       }
     }
     

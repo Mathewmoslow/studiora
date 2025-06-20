@@ -340,7 +340,7 @@ export class RegexDocumentParser {
       if (!isPM && hour === 12) hour = 0;
       
       const date = new Date(2025, month, day, hour, minute);
-      return date.toISOString().split('T')[0];
+      return date.toLocaleDateString('en-CA');
     }
     
     // Fall back to regular date parsing
@@ -406,7 +406,7 @@ export class RegexDocumentParser {
       if (!isPM && hour === 12) hour = 0;
       
       const date = new Date(year, month, day, hour, minute);
-      return date.toISOString().split('T')[0];
+      return date.toLocaleDateString('en-CA');
     }
     
     return null;
@@ -727,7 +727,7 @@ export class RegexDocumentParser {
       if (/^\w+\s+\d{1,2}$/.test(dateStr.trim())) {
         const date = new Date(`${dateStr}, ${currentYear}`);
         if (!isNaN(date.getTime())) {
-          return date.toISOString().split('T')[0];
+          return date.toLocaleDateString('en-CA');
         }
       }
 
@@ -735,7 +735,7 @@ export class RegexDocumentParser {
       if (/^\w+\s+\d{1,2},\s*\d{4}$/.test(dateStr.trim())) {
         const date = new Date(dateStr);
         if (!isNaN(date.getTime())) {
-          return date.toISOString().split('T')[0];
+          return date.toLocaleDateString('en-CA');
         }
       }
 
@@ -748,14 +748,14 @@ export class RegexDocumentParser {
         
         const date = new Date(year, month, day);
         if (!isNaN(date.getTime())) {
-          return date.toISOString().split('T')[0];
+          return date.toLocaleDateString('en-CA');
         }
       }
 
       // Try parsing as-is
       const date = new Date(dateStr);
       if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
+        return date.toLocaleDateString('en-CA');
       }
 
       // Handle relative dates
@@ -786,7 +786,7 @@ export class RegexDocumentParser {
         
         const targetDate = new Date(now);
         targetDate.setDate(now.getDate() + daysUntil);
-        return targetDate.toISOString().split('T')[0];
+        return targetDate.toLocaleDateString('en-CA');
       }
     }
 
@@ -794,30 +794,30 @@ export class RegexDocumentParser {
     if (lowerDate.includes('next week')) {
       const nextWeek = new Date(now);
       nextWeek.setDate(now.getDate() + 7);
-      return nextWeek.toISOString().split('T')[0];
+      return nextWeek.toLocaleDateString('en-CA');
     }
 
     if (lowerDate.includes('this week') || lowerDate.includes('end of week')) {
       const endOfWeek = new Date(now);
       const daysUntilFriday = (5 - now.getDay() + 7) % 7 || 7;
       endOfWeek.setDate(now.getDate() + daysUntilFriday);
-      return endOfWeek.toISOString().split('T')[0];
+      return endOfWeek.toLocaleDateString('en-CA');
     }
 
     if (lowerDate.includes('tomorrow')) {
       const tomorrow = new Date(now);
       tomorrow.setDate(now.getDate() + 1);
-      return tomorrow.toISOString().split('T')[0];
+      return tomorrow.toLocaleDateString('en-CA');
     }
 
     if (lowerDate.includes('today')) {
-      return now.toISOString().split('T')[0];
+      return now.toLocaleDateString('en-CA');
     }
 
     // Default fallback - one week from now
     const defaultDate = new Date(now);
     defaultDate.setDate(now.getDate() + 7);
-    return defaultDate.toISOString().split('T')[0];
+    return defaultDate.toLocaleDateString('en-CA');
   }
 
   inferCourseFromText(text) {
@@ -1170,7 +1170,7 @@ export class RegexDocumentParser {
         // Set reasonable future date
         const futureDate = new Date();
         futureDate.setDate(futureDate.getDate() + 7);
-        assignment.date = futureDate.toISOString().split('T')[0];
+        assignment.date = futureDate.toLocaleDateString('en-CA');
       }
     });
 
