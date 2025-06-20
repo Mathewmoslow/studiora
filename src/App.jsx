@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Calendar, Settings, Upload, Download, Plus, Edit2, Trash2, Save, X, Brain, FileText, Grid, List, Clock, Users, Sparkles, Zap, AlertCircle, Moon, Sun, RefreshCw, Menu, ChevronLeft, ChevronRight, CheckCircle, Circle } from 'lucide-react';
+import { ParserUI } from './components/Parser';
+import { useParserIntegration } from './hooks/useParserIntegration';
 
 // Import the actual CalendarView component
 import CalendarView from './components/Calendar/CalendarView';
@@ -276,8 +278,8 @@ function MobileNav({ isOpen, onClose, currentView, setCurrentView }) {
   );
 }
 
-// Header Component
-function Header({ onMenuClick, onAddCourse, onImport, onDataManager, isDark, onDarkModeToggle }) {
+// Header Component - UPDATED WITH PARSER BUTTON
+function Header({ onMenuClick, onAddCourse, onImport, onDataManager, isDark, onDarkModeToggle, ParserButton }) {
   return (
     <header className="bg-white dark:bg-gray-900 shadow-sm border-b dark:border-gray-800 sticky top-0 z-40">
       <div className="px-4 py-4">
@@ -312,6 +314,9 @@ function Header({ onMenuClick, onAddCourse, onImport, onDataManager, isDark, onD
             >
               <Settings className="h-5 w-5" />
             </button>
+            
+            {/* Parser Button added here */}
+            {ParserButton}
             
             <button
               onClick={onImport}
@@ -1104,6 +1109,37 @@ function StudioraNursingPlanner() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(DataManager.getTheme() === 'dark');
 
+  // ADD PARSER INTEGRATION HOOK HERE
+  const { ParserButton, ParserModal } = useParserIntegration({
+    onAssignmentsImported: (results) => {
+      // Generate unique IDs for each assignment
+      const newAssignments = results.assignments.map(assignment => ({
+        ...assignment,
+        id: `assignment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        courseId: selectedCourse?.id || appData.courses[0]?.id,
+        importedAt: new Date().toISOString()
+      }));
+
+      setAppData(prev => ({
+        ...prev,
+        assignments: [...prev.assignments, ...newAssignments],
+        modules: [...prev.modules, ...(results.modules || [])],
+        parsingHistory: [...prev.parsingHistory, {
+          id: `parse_${Date.now()}`,
+          courseId: selectedCourse?.id || appData.courses[0]?.id,
+          documentType: 'parser-integration',
+          assignmentCount: newAssignments.length,
+          confidence: results.metadata?.confidence || 0.9,
+          timestamp: new Date().toISOString()
+        }]
+      }));
+      
+      // Optional: Show success message if you have a toast/notification system
+      console.log(`Successfully imported ${results.assignments.length} assignments`);
+    },
+    isDark: isDarkMode
+  });
+
   // Apply dark mode class to document
   useEffect(() => {
     if (isDarkMode) {
@@ -1263,6 +1299,7 @@ function StudioraNursingPlanner() {
         onDataManager={() => setShowDataManager(true)}
         isDark={isDarkMode}
         onDarkModeToggle={() => setIsDarkMode(!isDarkMode)}
+        ParserButton={<ParserButton />}
       />
 
       <MobileNav
@@ -1420,6 +1457,9 @@ function StudioraNursingPlanner() {
           onExport={() => DataManager.exportData(appData)}
         />
       )}
+
+      {/* Parser Modal - Added at the end */}
+      <ParserModal />
     </div>
   );
 }
