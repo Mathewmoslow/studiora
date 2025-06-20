@@ -1,5 +1,4 @@
-{
-  "name": "studiora-nursing-planner",
+{ "name": "studiora-nursing-planner",
   "version": "2.0.0",
   "description": "Studiora - Intelligent Nursing Course Management System",
   "type": "module",
