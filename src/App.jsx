@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   BookOpen, Calendar, Plus, Settings, Download, Upload,
   Users, Brain, X, Menu, Moon, Sun, FileText, ChevronRight,
-  AlertCircle
+  AlertCircle, AlertTriangle
 } from 'lucide-react';
 import CalendarView from './CalendarView';
 //import ImportWizard from './components/ImportWizard'; // Keep for now but won't be used
@@ -284,6 +284,50 @@ function DataManagerModal({ appData, onClose, onImport }) {
   );
 }
 
+// Workload Analysis Component
+function WorkloadAnalysis({ assignments, courses }) {
+  // Calculate daily workload
+  const workloadByDate = {};
+  assignments.forEach(assignment => {
+    const date = new Date(assignment.date).toDateString();
+    if (!workloadByDate[date]) {
+      workloadByDate[date] = [];
+    }
+    workloadByDate[date].push(assignment);
+  });
+
+  // Find conflict dates (3+ assignments)
+  const conflictDates = Object.entries(workloadByDate)
+    .filter(([date, assignments]) => assignments.length >= 3)
+    .sort(([dateA], [dateB]) => new Date(dateA) - new Date(dateB));
+
+  return (
+    <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 mt-4">
+      <h4 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2 flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4" />
+        Workload Alerts
+      </h4>
+      {conflictDates.length > 0 ? (
+        <div className="space-y-2 text-sm">
+          {conflictDates.slice(0, 3).map(([date, assignments]) => (
+            <div key={date} className="text-yellow-700 dark:text-yellow-300">
+              <span className="font-medium">{new Date(date).toLocaleDateString()}</span>:
+              {assignments.length} assignments due
+              <div className="text-xs opacity-75 ml-2">
+                {assignments.map(a =>
+                  `${courses.find(c => c.id === a.course)?.code}: ${a.text.substring(0, 20)}...`
+                ).join(', ')}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-yellow-700 dark:text-yellow-300">No scheduling conflicts detected</p>
+      )}
+    </div>
+  );
+}
+
 // Component Views
 function AllCoursesOverview({ courses, assignments, completedAssignments, onToggleAssignment, onOpenExtractor }) {
   const stats = {
@@ -324,6 +368,9 @@ function AllCoursesOverview({ courses, assignments, completedAssignments, onTogg
 
       {/* Studiora Extractor Card */}
       <StudiorExtractorCard onOpen={onOpenExtractor} />
+
+      {/* Workload Analysis */}
+      <WorkloadAnalysis assignments={assignments} courses={courses} />
 
       {/* Upcoming Assignments */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -376,7 +423,99 @@ function AllCoursesOverview({ courses, assignments, completedAssignments, onTogg
   );
 }
 
-function CourseDashboard({ course, assignments, completedAssignments, onToggleAssignment, onOpenExtractor }) {
+function CourseDashboard({ course, courses, assignments, completedAssignments, onToggleAssignment, onOpenExtractor, viewMode }) {
+  // Generate course colors for all courses view
+  const courseColors = {};
+  const colors = [
+    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+    '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16'
+  ];
+
+  courses?.forEach((course, index) => {
+    courseColors[course.id] = course.color || colors[index % colors.length];
+  });
+
+  if (viewMode === 'all') {
+    // Calculate aggregate statistics
+    const totalAssignments = assignments.length;
+    const completedCount = assignments.filter(a => completedAssignments.has(a.id)).length;
+    const upcomingCount = assignments.filter(a =>
+      new Date(a.date) > new Date() && !completedAssignments.has(a.id)
+    ).length;
+    const overdueCount = assignments.filter(a =>
+      new Date(a.date) < new Date() && !completedAssignments.has(a.id)
+    ).length;
+
+    // Group assignments by course
+    const assignmentsByCourse = {};
+    courses.forEach(course => {
+      assignmentsByCourse[course.id] = assignments.filter(a => a.course === course.id);
+    });
+
+    return (
+      <div className="space-y-4">
+        {/* Overall Statistics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <div className="text-2xl font-bold text-blue-600">{totalAssignments}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">Total Tasks</div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <div className="text-2xl font-bold text-green-600">{completedCount}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">Completed</div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <div className="text-2xl font-bold text-yellow-600">{upcomingCount}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">Upcoming</div>
+          </div>
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+            <div className="text-2xl font-bold text-red-600">{overdueCount}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">Overdue</div>
+          </div>
+        </div>
+
+        {/* Workload Analysis */}
+        <WorkloadAnalysis assignments={assignments} courses={courses} />
+
+        {/* Assignments by Course */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold mb-4 dark:text-white">All Assignments by Course</h3>
+          <div className="space-y-6">
+            {courses.map(course => {
+              const courseAssignments = assignmentsByCourse[course.id] || [];
+              if (courseAssignments.length === 0) return null;
+
+              return (
+                <div key={course.id} className="border-l-4 pl-4" style={{ borderColor: courseColors[course.id] }}>
+                  <h4 className="font-medium mb-2 dark:text-white">
+                    {course.code} - {course.name}
+                    <span className="text-sm text-gray-500 ml-2">
+                      ({courseAssignments.filter(a => completedAssignments.has(a.id)).length}/{courseAssignments.length})
+                    </span>
+                  </h4>
+                  <div className="space-y-2">
+                    {courseAssignments
+                      .sort((a, b) => new Date(a.date) - new Date(b.date))
+                      .map(assignment => (
+                        <AssignmentItem
+                          key={assignment.id}
+                          assignment={assignment}
+                          isCompleted={completedAssignments.has(assignment.id)}
+                          onToggle={() => onToggleAssignment(assignment.id)}
+                          showCourse={false}
+                        />
+                      ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Original single course view
   const courseAssignments = assignments.filter(a => a.course === course.id);
   const upcomingAssignments = courseAssignments.filter(a =>
     new Date(a.date) > new Date() && !completedAssignments.has(a.id)
@@ -405,7 +544,6 @@ function CourseDashboard({ course, assignments, completedAssignments, onToggleAs
             Extract from Syllabus
           </button>
         </div>
-
 
         {/* Progress Bar */}
         <div className="mt-6">
@@ -588,6 +726,7 @@ function StudioraNursingPlanner() {
   const [isDarkMode, setIsDarkMode] = useState(DataManager.getTheme() === 'dark');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showSchedulerNotification, setShowSchedulerNotification] = useState(false);
+  const [viewMode, setViewMode] = useState('all'); // 'all' or 'single'
 
   // Apply dark mode
   useEffect(() => {
@@ -604,12 +743,12 @@ function StudioraNursingPlanner() {
     DataManager.saveData(appData);
   }, [appData]);
 
-  // Select first course by default
+  // Select first course by default if in single mode
   useEffect(() => {
-    if (!selectedCourse && appData.courses.length > 0) {
+    if (viewMode === 'single' && !selectedCourse && appData.courses.length > 0) {
       setSelectedCourse(appData.courses[0]);
     }
-  }, [appData.courses, selectedCourse]);
+  }, [appData.courses, selectedCourse, viewMode]);
 
   // Watch for completed assignments with study blocks
   useEffect(() => {
@@ -725,9 +864,10 @@ function StudioraNursingPlanner() {
     setAppData(importedData);
   };
 
-  const courseAssignments = selectedCourse
-    ? appData.assignments.filter(a => a.course === selectedCourse.id)
-    : [];
+  // Filter assignments based on view mode
+  const courseAssignments = viewMode === 'all'
+    ? appData.assignments
+    : appData.assignments.filter(a => a.course === selectedCourse?.id);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
@@ -763,24 +903,39 @@ function StudioraNursingPlanner() {
               <p className="text-sm text-gray-500 dark:text-gray-400">No courses yet</p>
             ) : (
               <div className="space-y-1">
+                {/* All Courses Option */}
                 <button
-                  onClick={() => setSelectedCourse(null)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm ${!selectedCourse
-                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  onClick={() => {
+                    setViewMode('all');
+                    setSelectedCourse(null);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between group transition-colors ${viewMode === 'all'
+                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                 >
-                  <Users className="inline h-4 w-4 mr-2" />
-                  All Courses
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    <span className="font-medium">All Courses</span>
+                  </div>
+                  <span className="text-xs opacity-60">
+                    {appData.assignments.length} total
+                  </span>
                 </button>
 
+                <div className="border-t dark:border-gray-700 pt-2 mb-2"></div>
+
+                {/* Individual Courses */}
                 {appData.courses.map(course => (
                   <button
                     key={course.id}
-                    onClick={() => setSelectedCourse(course)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center ${selectedCourse?.id === course.id
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    onClick={() => {
+                      setSelectedCourse(course);
+                      setViewMode('single');
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center ${viewMode === 'single' && selectedCourse?.id === course.id
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`}
                   >
                     <div
@@ -835,7 +990,7 @@ function StudioraNursingPlanner() {
       {/* Main Content */}
       <main className="lg:ml-64 p-4 lg:p-8">
         <div className="max-w-6xl mx-auto">
-          {!selectedCourse ? (
+          {viewMode === 'all' && appData.courses.length === 0 ? (
             <AllCoursesOverview
               courses={appData.courses}
               assignments={appData.assignments}
@@ -865,19 +1020,29 @@ function StudioraNursingPlanner() {
               {currentView === 'dashboard' ? (
                 <CourseDashboard
                   course={selectedCourse}
+                  courses={appData.courses}
                   assignments={courseAssignments}
                   completedAssignments={completedAssignments}
                   onToggleAssignment={toggleAssignment}
                   onOpenExtractor={() => setShowExtractor(true)}
+                  viewMode={viewMode}
                 />
               ) : currentView === 'calendar' ? (
                 <CalendarView
                   courses={appData.courses}
                   assignments={courseAssignments}
-                  studyBlocks={appData.studyBlocks.filter(s => s.courseId === selectedCourse.id)}
-                  calendarEvents={appData.calendarEvents?.filter(e => e.courseId === selectedCourse.id) || []}
+                  studyBlocks={viewMode === 'all'
+                    ? appData.studyBlocks
+                    : appData.studyBlocks.filter(s => s.courseId === selectedCourse?.id)
+                  }
+                  calendarEvents={viewMode === 'all'
+                    ? appData.calendarEvents || []
+                    : appData.calendarEvents?.filter(e => e.courseId === selectedCourse?.id) || []
+                  }
                   onUpdateAssignment={updateAssignment}
                   onAddAssignment={addAssignment}
+                  viewMode={viewMode}
+                  completedAssignments={completedAssignments}
                 />
               ) : (
                 <DataView appData={appData} />
