@@ -57,8 +57,10 @@ export class StudiorAIService {
       };
     } catch (error) {
       console.error('🤖 AI validation failed:', error);
+      // Ensure we return arrays even on failure
+      const assignments = Array.isArray(regexResults?.assignments) ? regexResults.assignments : [];
       return {
-        validatedAssignments: regexResults.assignments || [],
+        validatedAssignments: assignments,
         removedAssignments: [],
         enhancementSummary: 'AI validation failed - returning original assignments',
         confidence: 0.5
@@ -79,8 +81,12 @@ export class StudiorAIService {
         maxTokens: 4000
       });
       
+      const consolidatedAssignments = Array.isArray(result.consolidatedAssignments) 
+        ? this.validateAssignments(result.consolidatedAssignments)
+        : [];
+        
       return {
-        consolidatedAssignments: this.validateAssignments(result.consolidatedAssignments || []),
+        consolidatedAssignments,
         duplicatesRemoved: result.duplicatesRemoved || 0,
         consolidationSummary: result.consolidationSummary || ''
       };
