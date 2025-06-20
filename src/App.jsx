@@ -3,8 +3,8 @@ import {
   BookOpen, Calendar, Plus, Settings, Download, Upload, 
   Users, Brain, X, Menu, Moon, Sun, FileText, ChevronRight
 } from 'lucide-react';
-import ImportWizard from './components/ImportWizard'; // Keep for now but won't be used
-import { StudioraDualParser } from './services/StudioraDualParser'; // Keep for now but won't be used
+//import ImportWizard from './components/ImportWizard'; // Keep for now but won't be used
+//import { StudioraDualParser } from './services/StudioraDualParser'; // Keep for now but won't be used
 import CourseExtractorModal, { StudiorExtractorCard } from './components/CourseExtractorModal';
 
 // Data Manager Class
