@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Parser Test</title>
+    <script type="module">
+        // Quick test to verify parsers work
+        import { DocumentParsers } from './src/services/DocumentParsers.js';
+        
+        const testText = `
+        NURS330: Nursing of the Childbearing Family
+        Week 1: Module 1
+        Quiz
+        Quiz 1: Introduction
+        May 12
+        10 pts
+        `;
+        
+        console.log('Testing parser detection...');
+        const type = DocumentParsers.detectDocumentType(testText);
+        console.log('Detected type:', type);
+    </script>
+</head>
+<body>
+    <h1>Parser Test</h1>
+    <p>Check the console for results</p>
+</body>
+</html>

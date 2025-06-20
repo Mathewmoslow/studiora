@@ -4,6 +4,9 @@ import { RegexDocumentParser } from './RegexDocumentParser.js';
 import { 
   CanvasModulesParser, 
   CanvasAssignmentsParser, 
+  CanvasGradesParser,      // NEW
+  CanvasQuizzesParser,     // NEW
+  SherpathParser,          // NEW
   SyllabusParser, 
   ScheduleParser,
   DocumentParsers 
@@ -16,12 +19,15 @@ export class StudioraDualParser {
     
     // Initialize document-specific parsers
     this.documentParsers = {
-      'canvas-modules': new CanvasModulesParser(),
-      'canvas-assignments': new CanvasAssignmentsParser(),
-      'syllabus': new SyllabusParser(),
-      'schedule': new ScheduleParser(),
-      'mixed': this.regexParser
-    };
+  'canvas-modules': new CanvasModulesParser(),
+  'canvas-assignments': new CanvasAssignmentsParser(),
+  'canvas-grades': new CanvasGradesParser(),        // NEW
+  'canvas-quizzes': new CanvasQuizzesParser(),      // NEW
+  'sherpath': new SherpathParser(),                 // NEW
+  'syllabus': new SyllabusParser(),
+  'schedule': new ScheduleParser(),
+  'mixed': this.regexParser
+};
   }
 
   async parse(text, options = {}, onProgress = null) {
