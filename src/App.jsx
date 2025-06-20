@@ -4,7 +4,7 @@ import {
   Users, Brain, X, Menu, Moon, Sun, FileText, ChevronRight,
   AlertCircle, AlertTriangle
 } from 'lucide-react';
-import CalendarView from './CalendarView';
+import CalendarView from './components/CalendarView';
 //import ImportWizard from './components/ImportWizard'; // Keep for now but won't be used
 //import { StudioraDualParser } from './services/StudioraDualParser'; // Keep for now but won't be used
 import CourseExtractorModal, { StudiorExtractorCard } from './components/CourseExtractorModal';
