@@ -4,7 +4,7 @@ import {
   Users, Brain, X, Menu, Moon, Sun, FileText, ChevronRight,
   AlertCircle, AlertTriangle
 } from 'lucide-react';
-import CalendarView from './components/CalendarView';
+import CalendarView from '.src/components/CalendarView';
 //import ImportWizard from './components/ImportWizard'; // Keep for now but won't be used
 //import { StudioraDualParser } from './services/StudioraDualParser'; // Keep for now but won't be used
 import CourseExtractorModal, { StudiorExtractorCard } from './components/CourseExtractorModal';
@@ -910,8 +910,8 @@ function StudioraNursingPlanner() {
                     setSelectedCourse(null);
                   }}
                   className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between group transition-colors ${viewMode === 'all'
-                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                 >
                   <div className="flex items-center gap-2">
@@ -934,8 +934,8 @@ function StudioraNursingPlanner() {
                       setViewMode('single');
                     }}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center ${viewMode === 'single' && selectedCourse?.id === course.id
-                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`}
                   >
                     <div
