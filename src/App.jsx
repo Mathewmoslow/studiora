@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Calendar, Settings, Upload, Download, Plus, Edit2, Trash2, Save, X, Brain, FileText, Grid, List, Clock, Users, Sparkles, Zap, AlertCircle } from 'lucide-react';
 import CalendarView from './components/Calendar/CalendarView';
+import { StudyScheduler } from './components/StudyScheduler';
 
 // Import actual parsers
 import { StudioraDualParser } from './services/StudioraDualParser.js';
@@ -10,6 +11,19 @@ class DataManager {
   static STORAGE_KEY = 'studiora_complete_data';
   static VERSION = '1.0.0';
 
+  static DEFAULT_PREFERENCES = {
+    studyScheduler: {
+      dailyStudyHours: 4,
+      preferredTimes: {
+        morning: { enabled: true, start: '08:00', end: '12:00' },
+        afternoon: { enabled: true, start: '13:00', end: '17:00' },
+        evening: { enabled: true, start: '18:00', end: '21:00' }
+      },
+      bufferDays: 2,
+      sessionLength: 90
+    }
+  };
+
   static saveData(data) {
     const saveData = {
       version: this.VERSION,
@@ -18,7 +32,7 @@ class DataManager {
       assignments: data.assignments || [],
       studyBlocks: data.studyBlocks || [],
       calendarEvents: data.calendarEvents || [],
-      userPreferences: data.userPreferences || {},
+      userPreferences: data.userPreferences || this.DEFAULT_PREFERENCES,
       parsingHistory: data.parsingHistory || []
     };
     
@@ -36,7 +50,7 @@ class DataManager {
           assignments: data.assignments || [],
           studyBlocks: data.studyBlocks || [],
           calendarEvents: data.calendarEvents || [],
-          userPreferences: data.userPreferences || {},
+          userPreferences: data.userPreferences || this.DEFAULT_PREFERENCES,
           parsingHistory: data.parsingHistory || []
         };
       }
@@ -49,7 +63,7 @@ class DataManager {
       assignments: [],
       studyBlocks: [],
       calendarEvents: [],
-      userPreferences: {},
+      userPreferences: this.DEFAULT_PREFERENCES,
       parsingHistory: []
     };
   }
@@ -87,7 +101,7 @@ class DataManager {
             assignments: data.assignments || [],
             studyBlocks: data.studyBlocks || [],
             calendarEvents: data.calendarEvents || [],
-            userPreferences: data.userPreferences || {},
+            userPreferences: data.userPreferences || this.DEFAULT_PREFERENCES,
             parsingHistory: data.parsingHistory || []
           });
         } catch (error) {
@@ -114,6 +128,72 @@ const formatDate = (date, formatStr) => {
   return d.toLocaleDateString();
 };
 
+// Helper function to adjust color opacity
+function adjustColorOpacity(hexColor, opacity) {
+  // Convert hex to RGB
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  
+  // Return rgba color
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+// Study Progress Tracker Component
+function StudyProgressTracker({ studyBlocks, completedStudyBlocks = new Set(), onToggleStudyBlock }) {
+  const today = new Date();
+  const todayBlocks = studyBlocks.filter(block => {
+    const blockDate = new Date(block.start);
+    return blockDate.toDateString() === today.toDateString();
+  });
+  const completedToday = todayBlocks.filter(block => completedStudyBlocks.has(block.id)).length;
+  const totalHoursToday = todayBlocks.reduce((sum, block) => {
+    const hours = (new Date(block.end) - new Date(block.start)) / (1000 * 60 * 60);
+    return sum + hours;
+  }, 0);
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
+      <h3 className="font-medium mb-3 dark:text-white flex items-center gap-2">
+        <Clock className="h-4 w-4 text-purple-600" />
+        Today's Study Progress
+      </h3>
+      <div className="grid grid-cols-3 gap-4 text-center">
+        <div>
+          <div className="text-2xl font-bold text-purple-600">{todayBlocks.length}</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">Study Blocks</div>
+        </div>
+        <div>
+          <div className="text-2xl font-bold text-green-600">{completedToday}</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">Completed</div>
+        </div>
+        <div>
+          <div className="text-2xl font-bold text-blue-600">{totalHoursToday.toFixed(1)}h</div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">Total Time</div>
+        </div>
+      </div>
+      {todayBlocks.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {todayBlocks.map(block => (
+            <div key={block.id} className="flex items-center justify-between text-sm">
+              <span className="dark:text-gray-300">
+                {new Date(block.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
+                {new Date(block.end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+              </span>
+              <input
+                type="checkbox"
+                checked={completedStudyBlocks.has(block.id)}
+                onChange={() => onToggleStudyBlock(block.id)}
+                className="rounded"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Main App Component
 function StudioraNursingPlanner() {
   const [appData, setAppData] = useState(DataManager.loadData());
@@ -123,12 +203,21 @@ function StudioraNursingPlanner() {
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [currentView, setCurrentView] = useState('dashboard');
   const [completedAssignments, setCompletedAssignments] = useState(new Set());
+  const [completedStudyBlocks, setCompletedStudyBlocks] = useState(() => {
+    const saved = localStorage.getItem('completedStudyBlocks');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
   const [viewMode, setViewMode] = useState('all'); // 'all' or 'single'
 
   // Auto-save when data changes
   useEffect(() => {
     DataManager.saveData(appData);
   }, [appData]);
+
+  // Save completed study blocks
+  useEffect(() => {
+    localStorage.setItem('completedStudyBlocks', JSON.stringify([...completedStudyBlocks]));
+  }, [completedStudyBlocks]);
 
   // Select first course by default if in single mode
   useEffect(() => {
@@ -220,6 +309,18 @@ function StudioraNursingPlanner() {
     setCompletedAssignments(newCompleted);
   };
 
+  const toggleStudyBlockComplete = (blockId) => {
+    setCompletedStudyBlocks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(blockId)) {
+        newSet.delete(blockId);
+      } else {
+        newSet.add(blockId);
+      }
+      return newSet;
+    });
+  };
+
   const updateAssignment = (assignmentId, updates) => {
     setAppData(prev => ({
       ...prev,
@@ -246,6 +347,36 @@ function StudioraNursingPlanner() {
     }));
   };
 
+  const handleGenerateSchedule = (studyBlocks) => {
+    // Add generated study blocks to app data
+    setAppData(prev => ({
+      ...prev,
+      studyBlocks: [...prev.studyBlocks, ...studyBlocks.map(block => ({
+        ...block,
+        id: block.id || `study_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        createdAt: new Date().toISOString()
+      }))]
+    }));
+    
+    // Show success message (could add a toast notification here)
+    console.log(`Added ${studyBlocks.length} study blocks to your schedule!`);
+  };
+
+  const handleClearSchedule = () => {
+    setAppData(prev => ({
+      ...prev,
+      studyBlocks: []
+    }));
+    console.log('Study blocks cleared');
+  };
+
+  const deleteStudyBlock = (blockId) => {
+    setAppData(prev => ({
+      ...prev,
+      studyBlocks: prev.studyBlocks.filter(block => block.id !== blockId)
+    }));
+  };
+
   // Filtering logic
   const filteredAssignments = viewMode === 'all' 
     ? appData.assignments 
@@ -258,6 +389,9 @@ function StudioraNursingPlanner() {
   const filteredCalendarEvents = viewMode === 'all'
     ? appData.calendarEvents || []
     : (appData.calendarEvents || []).filter(e => e.courseId === selectedCourse?.id);
+
+  // View tabs including scheduler
+  const viewTabs = ['dashboard', 'calendar', 'scheduler', 'data'];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -274,7 +408,7 @@ function StudioraNursingPlanner() {
             
             <div className="flex items-center space-x-2">
               <nav className="hidden md:flex space-x-2">
-                {['dashboard', 'calendar', 'data'].map(view => (
+                {viewTabs.map(view => (
                   <button
                     key={view}
                     onClick={() => setCurrentView(view)}
@@ -429,6 +563,14 @@ function StudioraNursingPlanner() {
                 )}
               </div>
 
+              {currentView === 'dashboard' && appData.studyBlocks.length > 0 && (
+                <StudyProgressTracker 
+                  studyBlocks={filteredStudyBlocks}
+                  completedStudyBlocks={completedStudyBlocks}
+                  onToggleStudyBlock={toggleStudyBlockComplete}
+                />
+              )}
+
               {currentView === 'dashboard' ? (
                 viewMode === 'all' ? (
                   <AllCoursesOverview
@@ -437,6 +579,7 @@ function StudioraNursingPlanner() {
                     completedAssignments={completedAssignments}
                     onToggleAssignment={toggleAssignment}
                     onImport={() => setShowImportWizard(true)}
+                    onViewScheduler={() => setCurrentView('scheduler')}
                   />
                 ) : (
                   <CourseDashboard
@@ -455,7 +598,40 @@ function StudioraNursingPlanner() {
                   calendarEvents={filteredCalendarEvents}
                   onUpdateAssignment={updateAssignment}
                   onAddAssignment={addAssignment}
+                  onDeleteStudyBlock={deleteStudyBlock}
                   viewMode={viewMode}
+                  completedAssignments={completedAssignments}
+                  adjustColorOpacity={adjustColorOpacity}
+                />
+              ) : currentView === 'scheduler' ? (
+                <StudyScheduler
+                  assignments={filteredAssignments}
+                  existingEvents={[
+                    ...filteredAssignments.map(a => ({
+                      id: a.id,
+                      start: new Date(a.date),
+                      end: new Date(a.date),
+                      title: a.text,
+                      type: 'assignment'
+                    })),
+                    ...filteredStudyBlocks.map(s => ({
+                      id: s.id,
+                      start: new Date(s.start),
+                      end: new Date(s.end),
+                      title: s.title,
+                      type: 'study'
+                    })),
+                    ...filteredCalendarEvents.map(e => ({
+                      id: e.id,
+                      start: new Date(e.start),
+                      end: new Date(e.end),
+                      title: e.title,
+                      type: e.type || 'event'
+                    }))
+                  ]}
+                  courses={appData.courses}
+                  onGenerateSchedule={handleGenerateSchedule}
+                  onClearSchedule={handleClearSchedule}
                   completedAssignments={completedAssignments}
                 />
               ) : (
@@ -491,7 +667,7 @@ function StudioraNursingPlanner() {
 }
 
 // All Courses Overview Component
-function AllCoursesOverview({ courses, assignments, completedAssignments, onToggleAssignment, onImport }) {
+function AllCoursesOverview({ courses, assignments, completedAssignments, onToggleAssignment, onImport, onViewScheduler }) {
   // Calculate statistics
   const stats = {
     total: assignments.length,
@@ -572,6 +748,27 @@ function AllCoursesOverview({ courses, assignments, completedAssignments, onTogg
         <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
           <div className="text-3xl font-bold text-purple-600">{stats.todayCount}</div>
           <div className="text-sm text-gray-600 dark:text-gray-400">Due Today</div>
+        </div>
+      </div>
+
+      {/* Smart Scheduler Card */}
+      <div className="bg-gradient-to-r from-purple-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-semibold flex items-center gap-2">
+              <Brain className="h-6 w-6" />
+              Need help planning your study time?
+            </h3>
+            <p className="mt-2 opacity-90">
+              Our AI scheduler can automatically create study blocks based on your assignments and preferences
+            </p>
+          </div>
+          <button
+            onClick={onViewScheduler}
+            className="px-6 py-3 bg-white text-purple-600 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+          >
+            Open Scheduler
+          </button>
         </div>
       </div>
 
