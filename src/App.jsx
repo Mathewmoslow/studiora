@@ -4,6 +4,7 @@ import {
   Users, Brain, X, Menu, Moon, Sun, FileText, ChevronRight,
   AlertCircle
 } from 'lucide-react';
+import CalendarView from './CalendarView';
 //import ImportWizard from './components/ImportWizard'; // Keep for now but won't be used
 //import { StudioraDualParser } from './services/StudioraDualParser'; // Keep for now but won't be used
 import CourseExtractorModal, { StudiorExtractorCard } from './components/CourseExtractorModal';
@@ -501,19 +502,6 @@ function AssignmentItem({ assignment, isCompleted, onToggle, course, showCourse 
             </span>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function CalendarView({ courses, assignments, studyBlocks, calendarEvents, onUpdateAssignment, onAddAssignment }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-4 dark:text-white">Calendar</h2>
-      <div className="text-center py-12 text-gray-500">
-        <Calendar className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" />
-        <p className="mt-4">Calendar view coming soon</p>
-        <p className="text-sm">Will show assignments and study blocks on calendar</p>
       </div>
     </div>
   );

@@ -93,15 +93,30 @@ export default function CalendarView({
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
 
+  // Generate course colors
+  const courseColors = useMemo(() => {
+    const colors = {};
+    const colorPalette = [
+      '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+      '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16'
+    ];
+
+    courses?.forEach((course, index) => {
+      colors[course.id] = course.color || colorPalette[index % colorPalette.length];
+    });
+
+    return colors;
+  }, [courses]);
+
   // Transform all events for the calendar
   const events = useMemo(() => {
     const allEvents = [];
 
     // Add assignments
     assignments.forEach(assignment => {
-      const course = courses.find(c => c.id === assignment.courseId);
+      const course = courses.find(c => c.id === assignment.course);
       const isCompleted = completedAssignments.has(assignment.id);
-      const courseColor = course ? getCourseColor(course.code) : '#6B7280';
+      const courseColor = course ? courseColors[course.id] : '#6B7280';
 
       allEvents.push({
         id: assignment.id,
@@ -118,6 +133,7 @@ export default function CalendarView({
           completed: isCompleted
         },
         className: isCompleted ? 'completed' : '',
+        color: courseColor,
         style: {
           backgroundColor: isCompleted ? '#9CA3AF' : courseColor
         }
@@ -127,10 +143,13 @@ export default function CalendarView({
     // Add study blocks
     studyBlocks?.forEach(block => {
       const course = courses.find(c => c.id === block.courseId);
+      const courseColor = course ? courseColors[course.id] : '#9333EA';
 
       allEvents.push({
         id: block.id,
-        title: block.title || `Study: ${course?.code || 'General'}`,
+        title: viewMode === 'all' && course
+          ? `[${course.code}] ${block.title || 'Study Session'}`
+          : block.title || `Study: ${course?.code || 'General'}`,
         start: new Date(block.start || block.startTime),
         end: new Date(block.end || block.endTime),
         allDay: false,
@@ -140,7 +159,11 @@ export default function CalendarView({
           course
         },
         className: 'study-block',
-        style: getEventTypeStyle('study')
+        color: courseColor,
+        style: {
+          ...getEventTypeStyle('study'),
+          borderLeft: `4px solid ${courseColor}`
+        }
       });
     });
 
@@ -148,10 +171,13 @@ export default function CalendarView({
     calendarEvents?.forEach(event => {
       const course = courses.find(c => c.id === event.courseId);
       const styleInfo = getEventTypeStyle(event.type);
+      const courseColor = course ? courseColors[course.id] : styleInfo.backgroundColor;
 
       allEvents.push({
         id: event.id,
-        title: `${styleInfo.icon} ${event.title}`,
+        title: viewMode === 'all' && course
+          ? `${styleInfo.icon} [${course.code}] ${event.title}`
+          : `${styleInfo.icon} ${event.title}`,
         start: new Date(event.start || event.date),
         end: new Date(event.end || event.date),
         allDay: event.allDay !== false,
@@ -160,7 +186,11 @@ export default function CalendarView({
           data: event,
           course
         },
-        style: styleInfo
+        color: courseColor,
+        style: {
+          ...styleInfo,
+          backgroundColor: courseColor
+        }
       });
     });
 
@@ -183,24 +213,25 @@ export default function CalendarView({
     });
 
     return allEvents;
-  }, [assignments, studyBlocks, calendarEvents, essentialEvents, courses, viewMode, completedAssignments]);
+  }, [assignments, studyBlocks, calendarEvents, essentialEvents, courses, viewMode, completedAssignments, courseColors]);
 
   // Custom event style getter
   const eventStyleGetter = useCallback((event) => {
     let style = {
       ...event.style,
-      borderRadius: '4px',
+      backgroundColor: event.color || event.style?.backgroundColor,
+      borderRadius: '6px',
       border: 'none',
       fontSize: '0.75rem',
-      padding: '2px 4px',
+      padding: '2px 8px',
       cursor: 'pointer',
-      color: 'white'
+      color: 'white',
+      opacity: 1
     };
 
     // Add specific styles based on type
     if (event.resource?.type === 'study') {
-      style.borderLeft = '3px solid #7C3AED';
-      style.backgroundColor = '#9333EA';
+      style.borderLeft = `4px solid ${event.color}`;
     }
 
     if (event.resource?.completed) {
@@ -283,8 +314,8 @@ export default function CalendarView({
           <button
             onClick={() => onView(Views.MONTH)}
             className={`px-3 py-1 text-sm rounded-lg transition-colors ${view === Views.MONTH
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
           >
             Month
@@ -292,8 +323,8 @@ export default function CalendarView({
           <button
             onClick={() => onView(Views.WEEK)}
             className={`px-3 py-1 text-sm rounded-lg transition-colors ${view === Views.WEEK
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
           >
             Week
@@ -301,8 +332,8 @@ export default function CalendarView({
           <button
             onClick={() => onView(Views.DAY)}
             className={`px-3 py-1 text-sm rounded-lg transition-colors ${view === Views.DAY
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
           >
             Day
@@ -310,8 +341,8 @@ export default function CalendarView({
           <button
             onClick={() => onView(Views.AGENDA)}
             className={`px-3 py-1 text-sm rounded-lg transition-colors ${view === Views.AGENDA
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
           >
             Agenda
@@ -324,17 +355,46 @@ export default function CalendarView({
   // Custom event component for better display
   const CustomEvent = ({ event }) => {
     return (
-      <div className="px-1 text-xs">
+      <div className="px-1 text-xs overflow-hidden text-ellipsis whitespace-nowrap">
         {event.title}
+      </div>
+    );
+  };
+
+  // Course legend for all courses view
+  const CourseLegend = () => {
+    if (viewMode !== 'all' || courses.length === 0) return null;
+
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
+        <h3 className="text-sm font-medium mb-2 dark:text-white">Course Colors</h3>
+        <div className="flex flex-wrap gap-2">
+          {courses.map(course => (
+            <div key={course.id} className="flex items-center gap-1">
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: courseColors[course.id] }}
+              />
+              <span className="text-xs text-gray-600 dark:text-gray-400">{course.code}</span>
+            </div>
+          ))}
+        </div>
       </div>
     );
   };
 
   return (
     <div className="calendar-container">
+      <CourseLegend />
+
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <div className="mb-4">
-          {viewMode !== 'all' && (
+          {viewMode === 'all' && (
+            <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+              Viewing all courses - {assignments.length} assignments across {courses.length} courses
+            </div>
+          )}
+          {viewMode !== 'all' && currentWeek && (
             <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
               Week {currentWeek} Schedule
             </div>
@@ -379,6 +439,7 @@ export default function CalendarView({
             day: "Day",
             agenda: "Agenda"
           }}
+          className="studiora-calendar"
         />
       </div>
 
@@ -592,8 +653,8 @@ function EventDetailModal({ event, onClose, onUpdate, onDelete, onToggleComplete
                 <button
                   onClick={() => onToggleComplete(event.id)}
                   className={`flex-1 px-4 py-2 rounded-lg transition-colors ${isCompleted
-                      ? 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
-                      : 'bg-green-600 text-white hover:bg-green-700'
+                    ? 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    : 'bg-green-600 text-white hover:bg-green-700'
                     }`}
                 >
                   {isCompleted ? 'Mark Incomplete' : 'Mark Complete'}
@@ -652,6 +713,7 @@ function AddEventModal({ slot, courses, onClose, onAdd }) {
       id: `event_${Date.now()}`,
       title: formData.title,
       text: formData.title,
+      course: formData.courseId,
       courseId: formData.courseId,
       type: formData.type,
       date: startDate,
