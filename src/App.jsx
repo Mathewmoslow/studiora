@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   BookOpen, Calendar, Plus, Settings, Download, Upload,
-  Users, Brain, X, Menu, Moon, Sun, FileText, ChevronRight
+  Users, Brain, X, Menu, Moon, Sun, FileText, ChevronRight,
+  AlertCircle
 } from 'lucide-react';
 //import ImportWizard from './components/ImportWizard'; // Keep for now but won't be used
 //import { StudioraDualParser } from './services/StudioraDualParser'; // Keep for now but won't be used
@@ -127,8 +128,7 @@ function AddCourseModal({ onClose, onAdd }) {
     color: '#3B82F6'
   });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = () => {
     if (courseData.code && courseData.name) {
       onAdd(courseData);
     }
@@ -138,7 +138,7 @@ function AddCourseModal({ onClose, onAdd }) {
     <Modal isOpen={true} onClose={onClose}>
       <div className="p-6">
         <h2 className="text-xl font-semibold mb-4 dark:text-white">Add New Course</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Course Code*
@@ -149,7 +149,6 @@ function AddCourseModal({ onClose, onAdd }) {
               onChange={(e) => setCourseData({ ...courseData, code: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
               placeholder="NURS 101"
-              required
             />
           </div>
 
@@ -163,7 +162,6 @@ function AddCourseModal({ onClose, onAdd }) {
               onChange={(e) => setCourseData({ ...courseData, name: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
               placeholder="Introduction to Nursing"
-              required
             />
           </div>
 
@@ -209,20 +207,19 @@ function AddCourseModal({ onClose, onAdd }) {
 
           <div className="flex gap-3 pt-4">
             <button
-              type="submit"
+              onClick={handleSubmit}
               className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
             >
               Add Course
             </button>
             <button
-              type="button"
               onClick={onClose}
               className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
             >
               Cancel
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </Modal>
   );
@@ -553,6 +550,44 @@ function DataView({ appData }) {
   );
 }
 
+// Scheduler Update Notification Component
+function SchedulerUpdateNotification({ onGoToScheduler, onDismiss }) {
+  return (
+    <div
+      className="fixed bottom-4 right-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 shadow-lg max-w-sm animate-in slide-in-from-bottom"
+      style={{
+        animation: 'slide-in 0.3s ease-out'
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+            Study Schedule Update Available
+          </p>
+          <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+            You've completed assignments with study blocks. Want to optimize your study schedule?
+          </p>
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={onGoToScheduler}
+              className="text-sm px-3 py-1.5 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors"
+            >
+              Review Study Plan
+            </button>
+            <button
+              onClick={onDismiss}
+              className="text-sm px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Main App Component
 function StudioraNursingPlanner() {
   const [appData, setAppData] = useState(DataManager.loadData());
@@ -564,6 +599,7 @@ function StudioraNursingPlanner() {
   const [completedAssignments, setCompletedAssignments] = useState(new Set());
   const [isDarkMode, setIsDarkMode] = useState(DataManager.getTheme() === 'dark');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [showSchedulerNotification, setShowSchedulerNotification] = useState(false);
 
   // Apply dark mode
   useEffect(() => {
@@ -586,6 +622,20 @@ function StudioraNursingPlanner() {
       setSelectedCourse(appData.courses[0]);
     }
   }, [appData.courses, selectedCourse]);
+
+  // Watch for completed assignments with study blocks
+  useEffect(() => {
+    const hasStudyBlocks = appData.studyBlocks.length > 0;
+    if (hasStudyBlocks && completedAssignments.size > 0) {
+      // Check if any completed assignment has study blocks
+      const completedHasBlocks = [...completedAssignments].some(id =>
+        appData.studyBlocks.some(block => block.assignmentId === id)
+      );
+      if (completedHasBlocks && currentView !== 'calendar') {
+        setShowSchedulerNotification(true);
+      }
+    }
+  }, [completedAssignments, appData.studyBlocks, currentView]);
 
   const addCourse = (courseData) => {
     const newCourse = {
@@ -630,14 +680,17 @@ function StudioraNursingPlanner() {
 
   const toggleAssignment = (assignmentId) => {
     setCompletedAssignments(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(assignmentId)) {
-        newSet.delete(assignmentId);
+      const newCompleted = new Set(prev);
+      if (newCompleted.has(assignmentId)) {
+        newCompleted.delete(assignmentId);
       } else {
-        newSet.add(assignmentId);
+        newCompleted.add(assignmentId);
       }
-      return newSet;
+      return newCompleted;
     });
+
+    // Save state after toggling
+    DataManager.saveData(appData);
   };
 
   const updateAssignment = (assignmentId, updates) => {
@@ -846,6 +899,17 @@ function StudioraNursingPlanner() {
         </div>
       </main>
 
+      {/* Scheduler Update Notification */}
+      {showSchedulerNotification && currentView !== 'calendar' && (
+        <SchedulerUpdateNotification
+          onGoToScheduler={() => {
+            setCurrentView('calendar');
+            setShowSchedulerNotification(false);
+          }}
+          onDismiss={() => setShowSchedulerNotification(false)}
+        />
+      )}
+
       {/* Modals */}
       {showAddCourse && (
         <AddCourseModal onClose={() => setShowAddCourse(false)} onAdd={addCourse} />
@@ -870,5 +934,21 @@ function StudioraNursingPlanner() {
     </div>
   );
 }
+
+// Add CSS for slide-in animation
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes slide-in {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+`;
+document.head.appendChild(style);
 
 export default StudioraNursingPlanner;
