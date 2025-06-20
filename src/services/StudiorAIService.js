@@ -1,311 +1,273 @@
 // src/services/StudiorAIService.js
-// Studiora's AI Service - Sequential enhancement mode with validation
+// Studiora's AI Service - Sequential enhancement mode
 
 export class StudiorAIService {
   constructor(apiKey, options = {}) {
     this.apiKey = apiKey;
-    this.model = options.model || 'gpt-4o'; // Changed from 'gpt-4' to 'gpt-4o' for 128k context
+    this.model = options.model || 'gpt-3.5-turbo';
     this.baseURL = options.baseURL || 'https://api.openai.com/v1';
-    this.timeout = options.timeout || 120000;
+    this.timeout = options.timeout || 90000;
     this.maxRetries = options.maxRetries || 3;
   }
 
+  // Sequential enhancement methods
+  async parseRemaining(text, regexResults, options = {}) {
+    const prompt = this.buildPrompt(text, 'parse-remaining', { regexResults });
+    
+    try {
+      const result = await this.makeRequest(prompt, {
+        temperature: 0.3,
+        taskType: 'parse-remaining',
+        maxTokens: 3000
+      });
+      
+      return this.validateAssignments(result.assignments || []);
+    } catch (error) {
+      console.error('🤖 AI parse remaining failed:', error);
+      return { assignments: [] };
+    }
+  }
+
+  async validateAndEnhance(text, regexResults, course, documentType) {
+    const prompt = this.buildPrompt(text, 'validate-enhance', { 
+      regexResults, 
+      course, 
+      documentType 
+    });
+    
+    try {
+      const result = await this.makeRequest(prompt, {
+        temperature: 0.1,
+        taskType: 'validate-enhance',
+        maxTokens: 4000
+      });
+      
+      // Ensure proper structure
+      return {
+        validatedAssignments: this.validateAssignments(result.validatedAssignments || []),
+        removedAssignments: result.removedAssignments || [],
+        enhancementSummary: result.enhancementSummary || '',
+        confidence: result.confidence || 0.8
+      };
+    } catch (error) {
+      console.error('🤖 AI validation failed:', error);
+      return {
+        validatedAssignments: regexResults.assignments || [],
+        removedAssignments: [],
+        enhancementSummary: 'AI validation failed - returning original assignments',
+        confidence: 0.5
+      };
+    }
+  }
+
+  async consolidate(enhancedRegex, aiRemainder, originalText) {
+    const prompt = this.buildPrompt(originalText, 'final-consolidation', {
+      enhancedRegex,
+      aiRemainder
+    });
+    
+    try {
+      const result = await this.makeRequest(prompt, {
+        temperature: 0.1,
+        taskType: 'final-consolidation',
+        maxTokens: 4000
+      });
+      
+      return {
+        consolidatedAssignments: this.validateAssignments(result.consolidatedAssignments || []),
+        duplicatesRemoved: result.duplicatesRemoved || 0,
+        consolidationSummary: result.consolidationSummary || ''
+      };
+    } catch (error) {
+      console.error('🤖 AI consolidation failed:', error);
+      throw error;
+    }
+  }
+
+  // Helper methods
   async makeRequest(prompt, options = {}) {
-    const { temperature, taskType, maxTokens } = options;
+    const { temperature = 0.3, taskType = 'unknown', maxTokens = 4000 } = options;
     
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
+        
         const response = await fetch(`${this.baseURL}/chat/completions`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.apiKey}`
           },
           body: JSON.stringify({
             model: this.model,
             messages: [
               {
                 role: 'system',
-                content: this.getSystemPrompt(taskType)
+                content: 'You are Studiora\'s AI assistant, specializing in parsing nursing education documents. Always respond with valid JSON.'
               },
               {
                 role: 'user',
                 content: prompt
               }
             ],
-            temperature: temperature || 0.3,
-            max_tokens: maxTokens || 16000  // Much higher default for GPT-4o
+            temperature,
+            max_tokens: maxTokens,
+            response_format: { type: 'json_object' }
           }),
           signal: controller.signal
         });
-
+        
         clearTimeout(timeoutId);
-
+        
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(`API error ${response.status}: ${errorData.error?.message || 'Unknown error'}`);
+          const error = await response.text();
+          throw new Error(`API error: ${response.status} - ${error}`);
         }
-
+        
         const data = await response.json();
+        const content = data.choices[0].message.content;
         
-        if (!data.choices?.[0]?.message?.content) {
-          throw new Error('Invalid API response format');
-        }
-
-        // Extract content and clean it
-        let content = data.choices[0].message.content;
-        
-        // Remove markdown code blocks if present
-        content = content.replace(/^```json\s*\n?/i, '');
-        content = content.replace(/\n?```\s*$/i, '');
-        content = content.trim();
-        
-        // Try to parse JSON
-        let result;
         try {
-          result = JSON.parse(content);
+          const parsed = JSON.parse(content);
+          console.log(`✅ Studiora AI ${taskType} successful`);
+          return parsed;
         } catch (parseError) {
           console.error('Failed to parse AI response:', content);
           throw new Error(`Invalid JSON response: ${parseError.message}`);
         }
         
-        // Add metadata
-        result._meta = {
-          model: this.model,
-          taskType,
-          attempt,
-          timestamp: Date.now(),
-          tokensUsed: data.usage?.total_tokens,
-          studiorVersion: '1.0.0'
-        };
-        
-        return result;
-
       } catch (error) {
-        console.warn(`🤖 Studiora AI attempt ${attempt} failed:`, error.message);
+        console.error(`🤖 Studiora AI attempt ${attempt} failed:`, error.message);
         
         if (attempt === this.maxRetries) {
           throw error;
         }
         
-        // Exponential backoff
-        await this.delay(Math.pow(2, attempt) * 1000);
+        await this.delay(attempt * 1000);
       }
     }
   }
 
-  // STAGE 2: Parse remainder text after regex extraction
-  async parseRemainder(remainingText, context) {
-    if (!this.apiKey) {
-      throw new Error('AI service requires API key');
-    }
+  validateAssignments(assignments) {
+    return assignments
+      .filter(a => a && a.text && a.date)
+      .map(assignment => ({
+        ...assignment,
+        id: assignment.id || `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        text: assignment.text.trim(),
+        date: this.validateDate(assignment.date),
+        type: assignment.type || 'assignment',
+        hours: Math.max(0.25, Math.min(8, assignment.hours || 1.5)),
+        course: assignment.course || 'unknown',
+        confidence: Math.max(0.1, Math.min(1, assignment.confidence || 0.7)),
+        source: assignment.source || 'ai'
+      }));
+  }
 
-    const prompt = `You are analyzing REMAINDER text after regex extraction. The regex parser has already found these assignments:
+  buildPrompt(text, taskType, context = {}) {
+    const currentDate = this.getCurrentDateString();
+    const basePrompt = `Current date: ${currentDate}
+Academic semester: Spring 2025 (May 5 - August 10, 2025)
+Document type: ${context.documentType || 'mixed'}
+Course: ${context.course || 'nursing'}
 
-EXISTING ASSIGNMENTS FOUND BY REGEX:
-${JSON.stringify(context.existingAssignments, null, 2)}
+IMPORTANT: You must return ONLY valid JSON with no additional text or formatting.`;
 
-DOCUMENT TYPE: ${context.documentType}
-COURSE: ${context.course}
+    switch (taskType) {
+      case 'parse-remaining':
+        return `${basePrompt}
+
+Analyze this remaining text after regex extraction. Find ANY assignments missed by regex.
+Focus on implicit assignments like "prepare for discussion", "review before class", etc.
+
+REGEX ALREADY FOUND:
+${JSON.stringify(context.regexResults?.assignments || [], null, 2)}
 
 REMAINING TEXT TO ANALYZE:
-${remainingText}
+${text}
 
-Your task is to find ONLY NEW assignments that the regex parser missed. Look for:
-- Implicit assignments ("be prepared to discuss", "review before class")
-- Assignments in unusual formats
-- Assignments mentioned in context but not as clear directives
-- Preparation requirements for labs/clinicals
-- Hidden deadlines in narrative text
-
-DO NOT re-extract assignments already found by regex.
-
-RESPOND WITH ONLY VALID JSON (no markdown, no code blocks):
+Return JSON with this EXACT structure:
 {
   "assignments": [
     {
-      "text": "Assignment description",
-      "date": "YYYY-MM-DD or null",
-      "type": "reading|quiz|exam|assignment|lab|discussion|clinical|simulation|prep",
+      "text": "assignment description",
+      "date": "YYYY-MM-DD",
+      "type": "assignment|reading|quiz|exam|project|clinical|lab|discussion",
       "hours": 1.5,
-      "course": "${context.course}",
-      "confidence": 0.8,
-      "extractionReason": "Why this was identified as a NEW assignment"
+      "confidence": 0.7,
+      "extractionReason": "why this is an assignment"
     }
   ]
 }`;
 
-    try {
-      const result = await this.makeRequest(prompt, {
-        temperature: 0.3,
-        taskType: 'remainder-parsing',
-        maxTokens: 4000
-      });
+      case 'validate-enhance':
+        return `${basePrompt}
 
-      // Validate and enhance the result
-      return {
-        assignments: (result.assignments || []).map((assignment, idx) => ({
-          ...assignment,
-          id: assignment.id || `ai_remainder_${Date.now()}_${idx}`,
-          date: this.validateDate(assignment.date),
-          source: 'ai-remainder'
-        }))
-      };
-    } catch (error) {
-      console.error('🤖 AI remainder parsing failed:', error);
-      throw error;
-    }
-  }
+VALIDATE and ENHANCE these regex-extracted assignments. For EACH assignment:
+- Verify it's a real assignment (not a false positive)
+- Find missing dates by looking at surrounding context
+- Improve descriptions using context
+- Fix any date parsing issues
 
-  // STAGE 3: Validate and enhance regex results
-  async validateAssignments(validationRequest) {
-    if (!this.apiKey) {
-      throw new Error('AI service requires API key');
-    }
+ORIGINAL TEXT:
+${text}
 
-    const { originalText, regexAssignments, documentType, course } = validationRequest;
+REGEX ASSIGNMENTS TO VALIDATE:
+${JSON.stringify(context.regexResults?.assignments || [], null, 2)}
 
-    const prompt = `You are validating and enhancing assignments found by regex parsing.
-
-ORIGINAL DOCUMENT (first 3000 chars):
-${originalText}
-
-DOCUMENT TYPE: ${documentType}
-COURSE: ${course}
-
-REGEX FOUND THESE ASSIGNMENTS:
-${JSON.stringify(regexAssignments.map(a => ({
-  text: a.text,
-  date: a.date,
-  type: a.type,
-  points: a.points,
-  module: a.module
-})), null, 2)}
-
-YOUR TASKS:
-1. VALIDATE each assignment (is it real or a false positive?)
-2. FIX missing dates by looking at context
-3. IMPROVE vague descriptions using surrounding text
-4. STANDARDIZE assignment types
-5. ADD missing information (points, hours, etc.)
-6. FLAG invalid entries for removal
-
-For dates, consider:
-- Module/week context
-- Sequence of assignments
-- Academic calendar (Spring 2025: May 5 - August 10)
-- Typical patterns (quizzes on Fridays, etc.)
-
-RESPOND WITH ONLY VALID JSON (no markdown, no code blocks):
+Return JSON with this EXACT structure:
 {
   "validatedAssignments": [
     {
-      "originalIndex": 0,
-      "isValid": true,
-      "text": "Enhanced assignment description",
+      "id": "keep original id",
+      "text": "enhanced description",
       "date": "YYYY-MM-DD",
-      "type": "standardized_type",
+      "type": "assignment type",
       "hours": 1.5,
-      "points": 10,
-      "course": "${course}",
-      "confidence": 0.95,
-      "enhancementNotes": "What was improved"
+      "course": "${context.course || 'unknown'}",
+      "confidence": 0.9,
+      "validationNote": "why valid/what was fixed"
     }
   ],
-  "confidence": 0.85,
-  "insights": [
-    "Pattern noticed or recommendation"
-  ]
+  "removedAssignments": ["ids of false positives"],
+  "enhancementSummary": "brief summary of changes",
+  "confidence": 0.85
 }`;
-
-    try {
-      const result = await this.makeRequest(prompt, {
-        temperature: 0.2,
-        taskType: 'validation-enhancement',
-        maxTokens: 8000
-      });
-
-      // Map validated assignments back with original IDs
-      const validatedAssignments = [];
-      
-      (result.validatedAssignments || []).forEach(validated => {
-        if (validated.isValid && validated.originalIndex < regexAssignments.length) {
-          const original = regexAssignments[validated.originalIndex];
-          validatedAssignments.push({
-            ...original,
-            ...validated,
-            id: original.id,
-            aiEnhanced: true,
-            date: this.validateDate(validated.date) || original.date
-          });
-        }
-      });
-
-      return {
-        validatedAssignments,
-        confidence: result.confidence || 0.7,
-        insights: result.insights || []
-      };
-    } catch (error) {
-      console.error('🤖 AI validation failed:', error);
-      throw error;
-    }
-  }
-
-  getSystemPrompt(taskType) {
-    const basePrompt = `You are Studiora's AI assistant, an expert in nursing education content parsing. You specialize in:
-- Nursing curricula (OB/GYN, Adult Health, NCLEX prep, Gerontology)
-- Academic assignment extraction
-- Educational content analysis
-- Date interpretation and conversion
-- Learning objective identification
-
-Always respond with ONLY valid JSON format. No markdown, no code blocks, no extra text.`;
-
-    switch (taskType) {
-      case 'remainder-parsing':
-        return `${basePrompt}
-
-Your task is REMAINDER PARSING. You are analyzing text that remains AFTER regex extraction.
-- The regex parser has already processed the document and extracted obvious assignments
-- You are ONLY looking at what's left over
-- Find implicit assignments, unusual formats, and missed items
-- DO NOT re-extract what regex already found
-- Focus on context clues and implications`;
-
-      case 'validation-enhancement':
-        return `${basePrompt}
-
-Your task is VALIDATION AND ENHANCEMENT of regex results.
-- Validate EVERY assignment to ensure it's real
-- Convert ALL relative dates to absolute dates
-- Improve unclear descriptions using context
-- Add missing information from surrounding text
-- Standardize formatting and structure
-- Flag any false positives for removal`;
 
       case 'final-consolidation':
         return `${basePrompt}
 
-Your task is FINAL CONSOLIDATION of all parsed assignments.
-- Merge assignments from enhanced regex and AI remainder parsing
-- Identify and resolve any duplicates
+CONSOLIDATE all assignments from enhanced regex and AI remainder parsing.
+- Merge the two lists
+- Remove any duplicates (same assignment found by both)
 - Ensure consistent formatting
-- Order assignments logically by date
-- Create the final authoritative list`;
+- Order by date
 
-      case 'sequential-enhancement':
-        return `${basePrompt}
+ENHANCED REGEX ASSIGNMENTS:
+${JSON.stringify(context.enhancedRegex?.validatedAssignments || [], null, 2)}
 
-Your task is SEQUENTIAL ENHANCEMENT. A regex parser has already extracted assignments. You must:
-- Validate EVERY assignment found by regex (mandatory)
-- Find and fix missing dates by looking at context
-- Identify any assignments the regex parser missed
-- Flag invalid entries that aren't real assignments
-- Improve accuracy of extracted information`;
+AI REMAINDER ASSIGNMENTS:
+${JSON.stringify(context.aiRemainder?.assignments || [], null, 2)}
+
+Return JSON with this EXACT structure:
+{
+  "consolidatedAssignments": [
+    {
+      "id": "original or new id",
+      "text": "assignment description",
+      "date": "YYYY-MM-DD",
+      "type": "type",
+      "hours": 1.5,
+      "course": "course",
+      "confidence": 0.8,
+      "source": "regex/ai/both",
+      "consolidationNote": "unique/duplicate removed/merged"
+    }
+  ],
+  "duplicatesRemoved": 0,
+  "consolidationSummary": "X total assignments: Y from regex, Z from AI, W duplicates removed"
+}`;
 
       default:
         return basePrompt;
@@ -325,10 +287,23 @@ Your task is SEQUENTIAL ENHANCEMENT. A regex parser has already extracted assign
       
       if (date < minDate || date > maxDate) return null;
       
-      return date.toISOString().split('T')[0];
+      // Fixed: Use local timezone instead of UTC
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
     } catch {
       return null;
     }
+  }
+
+  getCurrentDateString() {
+    const now = new Date();
+    // Fixed: Use local timezone instead of UTC
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   }
 
   delay(ms) {
