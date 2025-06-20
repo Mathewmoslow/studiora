@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Calendar, Settings, Upload, Download, Plus, Edit2, Trash2, Save, X, Brain, FileText, Grid, List, Clock, Users, Sparkles, Zap, AlertCircle } from 'lucide-react';
+import CalendarView from './components/Calendar/CalendarView';
 
 // Import actual parsers
 import { StudioraDualParser } from './services/StudioraDualParser.js';
@@ -203,6 +204,32 @@ function StudioraNursingPlanner() {
     setCompletedAssignments(newCompleted);
   };
 
+  const updateAssignment = (assignmentId, updates) => {
+    setAppData(prev => ({
+      ...prev,
+      assignments: prev.assignments.map(a => 
+        a.id === assignmentId 
+          ? { ...a, ...updates, updatedAt: new Date().toISOString() } 
+          : a
+      )
+    }));
+  };
+
+  const addAssignment = (assignmentData) => {
+    const newAssignment = {
+      id: `assignment_${Date.now()}`,
+      ...assignmentData,
+      courseId: selectedCourse.id,
+      createdAt: new Date().toISOString(),
+      source: 'manual'
+    };
+    
+    setAppData(prev => ({
+      ...prev,
+      assignments: [...prev.assignments, newAssignment]
+    }));
+  };
+
   const courseAssignments = selectedCourse 
     ? appData.assignments.filter(a => a.courseId === selectedCourse.id)
     : [];
@@ -320,6 +347,9 @@ function StudioraNursingPlanner() {
                     course={selectedCourse}
                     assignments={courseAssignments}
                     studyBlocks={appData.studyBlocks.filter(s => s.courseId === selectedCourse.id)}
+                    calendarEvents={appData.calendarEvents?.filter(e => e.courseId === selectedCourse.id) || []}
+                    onUpdateAssignment={updateAssignment}
+                    onAddAssignment={addAssignment}
                   />
                 ) : (
                   <DataView appData={appData} />
@@ -1078,20 +1108,6 @@ function AssignmentCard({ assignment, isCompleted, onToggle }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-// Calendar View Component
-function CalendarView({ course, assignments, studyBlocks }) {
-  return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-4">{course.code} Calendar</h2>
-      <div className="text-center py-12 text-gray-500">
-        <Calendar className="mx-auto h-12 w-12 text-gray-300" />
-        <p className="mt-4">Calendar view coming soon</p>
-        <p className="text-sm">Will show assignments and study blocks on calendar</p>
       </div>
     </div>
   );
