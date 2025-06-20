@@ -46,3 +46,248 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 }
+/* Add this to your global CSS file or App.css */
+
+/* React Big Calendar Custom Styles for Studiora */
+.studiora-calendar .rbc-calendar {
+  font-family: inherit;
+}
+
+.studiora-calendar .rbc-month-view,
+.studiora-calendar .rbc-time-view,
+.studiora-calendar .rbc-agenda-view {
+  border: none;
+  background: transparent;
+}
+
+.studiora-calendar .rbc-header {
+  padding: 8px;
+  font-weight: 600;
+  border-bottom: 2px solid #e5e7eb;
+  background: transparent;
+}
+
+.dark .studiora-calendar .rbc-header {
+  border-bottom-color: #374151;
+  color: #d1d5db;
+}
+
+.studiora-calendar .rbc-month-row {
+  border: none;
+}
+
+.studiora-calendar .rbc-day-bg {
+  border-left: 1px solid #e5e7eb;
+}
+
+.dark .studiora-calendar .rbc-day-bg {
+  border-left-color: #374151;
+}
+
+.studiora-calendar .rbc-off-range-bg {
+  background: #f9fafb;
+}
+
+.dark .studiora-calendar .rbc-off-range-bg {
+  background: #111827;
+}
+
+.studiora-calendar .rbc-today {
+  background-color: #eff6ff;
+}
+
+.dark .studiora-calendar .rbc-today {
+  background-color: #1e3a8a20;
+}
+
+.studiora-calendar .rbc-event {
+  padding: 2px 8px;
+  font-size: 0.875rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.studiora-calendar .rbc-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.studiora-calendar .rbc-event:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+}
+
+.studiora-calendar .rbc-event-label {
+  display: none;
+}
+
+.studiora-calendar .rbc-selected {
+  background-color: #3b82f6 !important;
+}
+
+.studiora-calendar .rbc-show-more {
+  background-color: #e5e7eb;
+  color: #374151;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin: 2px;
+}
+
+.dark .studiora-calendar .rbc-show-more {
+  background-color: #374151;
+  color: #d1d5db;
+}
+
+.studiora-calendar .rbc-toolbar {
+  display: none; /* We're using our custom toolbar */
+}
+
+.studiora-calendar .rbc-date-cell {
+  padding: 4px;
+  text-align: right;
+}
+
+.dark .studiora-calendar .rbc-date-cell {
+  color: #d1d5db;
+}
+
+.studiora-calendar .rbc-date-cell.rbc-off-range {
+  color: #9ca3af;
+}
+
+.dark .studiora-calendar .rbc-date-cell.rbc-off-range {
+  color: #4b5563;
+}
+
+/* Agenda View Styles */
+.studiora-calendar .rbc-agenda-view table {
+  border: none;
+}
+
+.studiora-calendar .rbc-agenda-view table thead > tr > th {
+  border-bottom: 2px solid #e5e7eb;
+  padding: 8px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.dark .studiora-calendar .rbc-agenda-view table thead > tr > th {
+  border-bottom-color: #374151;
+  color: #d1d5db;
+}
+
+.studiora-calendar .rbc-agenda-date-cell,
+.studiora-calendar .rbc-agenda-time-cell {
+  white-space: nowrap;
+  padding: 8px;
+}
+
+.dark .studiora-calendar .rbc-agenda-date-cell,
+.dark .studiora-calendar .rbc-agenda-time-cell {
+  color: #d1d5db;
+}
+
+.studiora-calendar .rbc-agenda-event-cell {
+  padding: 8px;
+}
+
+/* Week View Styles */
+.studiora-calendar .rbc-time-view {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.dark .studiora-calendar .rbc-time-view {
+  border-color: #374151;
+}
+
+.studiora-calendar .rbc-time-header {
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.dark .studiora-calendar .rbc-time-header {
+  border-bottom-color: #374151;
+}
+
+.studiora-calendar .rbc-time-content {
+  border-top: none;
+}
+
+.studiora-calendar .rbc-timeslot-group {
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.dark .studiora-calendar .rbc-timeslot-group {
+  border-bottom-color: #1f2937;
+}
+
+.studiora-calendar .rbc-current-time-indicator {
+  background-color: #ef4444;
+  height: 2px;
+}
+
+/* Completed Assignment Styles */
+.studiora-calendar .rbc-event.completed {
+  opacity: 0.6;
+  text-decoration: line-through;
+  background-color: #9ca3af !important;
+}
+
+/* Overdue Assignment Styles */
+.studiora-calendar .rbc-event.overdue {
+  background-color: #dc2626 !important;
+  font-weight: bold;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+  .studiora-calendar .rbc-toolbar {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .studiora-calendar .rbc-toolbar-label {
+    order: -1;
+    width: 100%;
+    text-align: center;
+    font-size: 1.125rem;
+  }
+  
+  .studiora-calendar .rbc-event {
+    font-size: 0.75rem;
+    padding: 1px 4px;
+  }
+  
+  .studiora-calendar .rbc-date-cell {
+    font-size: 0.875rem;
+  }
+}
+
+/* Calendar Height Adjustments */
+.studiora-calendar {
+  height: calc(100vh - 300px);
+  min-height: 500px;
+}
+
+@media (max-width: 768px) {
+  .studiora-calendar {
+    height: calc(100vh - 400px);
+    min-height: 400px;
+  }
+}

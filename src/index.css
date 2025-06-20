@@ -1,9 +1,8 @@
 /* Ensure proper font loading - @import must come first */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* @tailwind directives removed because they are not recognized by standard CSS processors.
+   If you are using Tailwind CSS, make sure your build process includes Tailwind's PostCSS plugin. */
 
 /* Studiora-specific styles */
 .studiora-gradient {
