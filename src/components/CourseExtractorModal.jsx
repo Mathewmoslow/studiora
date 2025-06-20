@@ -6,7 +6,7 @@ const STUDIORA_EXTRACTION_PROMPT = `Identify all the unique items as part of thi
 // Modal wrapper component
 function Modal({ isOpen, onClose, children }) {
   if (!isOpen) return null;
-  
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white dark:bg-gray-800 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -14,6 +14,86 @@ function Modal({ isOpen, onClose, children }) {
       </div>
     </div>
   );
+}
+
+// Helper function to clean and extract JSON from AI response
+function extractJSONFromResponse(content) {
+  // Remove any markdown code blocks
+  let cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
+
+  // Find the start of JSON (first { or [)
+  const jsonStart = Math.min(
+    cleaned.indexOf('{') > -1 ? cleaned.indexOf('{') : Infinity,
+    cleaned.indexOf('[') > -1 ? cleaned.indexOf('[') : Infinity
+  );
+
+  if (jsonStart === Infinity) {
+    throw new Error('No JSON object found in response');
+  }
+
+  // Extract from the JSON start
+  cleaned = cleaned.substring(jsonStart);
+
+  // Find the matching closing bracket/brace
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  let jsonEnd = -1;
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const char = cleaned[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === '{' || char === '[') {
+      depth++;
+    } else if (char === '}' || char === ']') {
+      depth--;
+      if (depth === 0) {
+        jsonEnd = i + 1;
+        break;
+      }
+    }
+  }
+
+  if (jsonEnd === -1) {
+    throw new Error('Incomplete JSON object');
+  }
+
+  return cleaned.substring(0, jsonEnd);
+}
+
+// Helper to validate assignment structure
+function validateAssignment(item, index) {
+  const validTypes = ['assignment', 'quiz', 'exam', 'reading', 'video', 'clinical', 'simulation',
+    'presentation', 'discussion', 'class', 'powerpoint', 'lecture', 'lab', 'project', 'other'];
+
+  return {
+    id: item.id || `schedule_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
+    text: String(item.text || 'Untitled Item'),
+    date: item.date && item.date.match(/^\d{4}-\d{2}-\d{2}$/) ? item.date : null,
+    type: validTypes.includes(item.type) ? item.type : 'assignment',
+    hours: typeof item.hours === 'number' && item.hours > 0 ? item.hours : 1.5,
+    course: String(item.course || 'unknown'),
+    category: item.category ? String(item.category) : undefined,
+    confidence: typeof item.confidence === 'number' ? Math.min(1, Math.max(0, item.confidence)) : 0.8,
+    source: 'studiora-extracted'
+  };
 }
 
 // Course Extractor Modal
@@ -25,7 +105,7 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
   const [editedItem, setEditedItem] = useState(null);
   const [error, setError] = useState('');
   const [inputMethod, setInputMethod] = useState('paste');
-  const [selectedCourse, setSelectedCourse] = useState(courses[0]?.id || '');
+  const [selectedCourse, setSelectedCourse] = useState(courses?.[0]?.id || '');
 
   // Extract using Studiora processing
   const extractWithStudiora = async (text) => {
@@ -39,27 +119,37 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
       return;
     }
 
-    const systemPrompt = `You are Studiora's intelligent course parser. Extract ALL course items and return them in this EXACT JSON format:
+    // More robust system prompt
+    const systemPrompt = `You are Studiora's intelligent course parser. Extract ALL course items and return ONLY valid JSON.
+
+CRITICAL RULES:
+1. Return ONLY the JSON object, no other text before or after
+2. Ensure all JSON is properly formatted with commas between array items
+3. All dates must be in YYYY-MM-DD format or null
+4. All string values must be properly escaped
+5. Numbers must not have quotes
+
+Return this EXACT structure:
 {
   "assignments": [
     {
-      "id": "schedule_TIMESTAMP_RANDOMSTRING",
-      "text": "Description of the item",
-      "date": "YYYY-MM-DD",
-      "type": "assignment|quiz|exam|reading|video|clinical|simulation|presentation|discussion|class|powerpoint|lecture|lab|project|other",
-      "hours": number,
+      "id": "unique_id",
+      "text": "description",
+      "date": "YYYY-MM-DD or null",
+      "type": "one of: assignment|quiz|exam|reading|video|clinical|simulation|presentation|discussion|class|powerpoint|lecture|lab|project|other",
+      "hours": 1.5,
       "course": "${selectedCourse || 'course_code'}",
-      "category": "Optional category like Pre-work, Clinical Time, Lab/Simulation (omit if not applicable)",
-      "confidence": 0.0-1.0,
+      "category": "optional category or omit",
+      "confidence": 0.8,
       "source": "studiora-extracted"
     }
   ],
   "metadata": {
-    "extractionDate": "ISO date",
-    "totalItems": number,
-    "confidence": 0.0-1.0,
+    "extractionDate": "${new Date().toISOString()}",
+    "totalItems": 0,
+    "confidence": 0.8,
     "model": "gpt-4",
-    "prompt": "the prompt used"
+    "prompt": "extraction"
   }
 }`;
 
@@ -74,43 +164,89 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
           model: 'gpt-4',
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `${STUDIORA_EXTRACTION_PROMPT}\n\nDocument content:\n${text}` }
+            { role: 'user', content: `${STUDIORA_EXTRACTION_PROMPT}\n\nDocument content:\n${text.substring(0, 12000)}` } // Limit input to avoid token limits
           ],
           temperature: 0.1,
-          max_tokens: 4000
+          max_tokens: 4000,
+          response_format: { type: "json_object" } // Force JSON response if supported
         })
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
         throw new Error(errorData.error?.message || 'Studiora processing failed');
       }
 
       const data = await response.json();
-      const content = data.choices[0].message.content;
-      
+      let content = data.choices[0].message.content;
+
+      // Extract and parse JSON
       let result;
       try {
+        // First try direct parsing
         result = JSON.parse(content);
-      } catch (e) {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          result = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('Invalid response from Studiora');
+      } catch (parseError) {
+        console.warn('Direct JSON parse failed, attempting extraction...', parseError);
+
+        try {
+          // Try to extract JSON from the response
+          const extracted = extractJSONFromResponse(content);
+          result = JSON.parse(extracted);
+        } catch (extractError) {
+          console.error('JSON extraction failed:', extractError);
+          console.log('Raw content:', content);
+
+          // Last resort - create a minimal valid structure
+          result = {
+            assignments: [],
+            metadata: {
+              extractionDate: new Date().toISOString(),
+              totalItems: 0,
+              confidence: 0,
+              model: 'gpt-4',
+              prompt: STUDIORA_EXTRACTION_PROMPT,
+              error: 'Failed to parse AI response'
+            }
+          };
+
+          // Try to extract at least some assignments manually
+          const assignmentMatches = content.matchAll(/"text"\s*:\s*"([^"]+)"/g);
+          for (const match of assignmentMatches) {
+            result.assignments.push({
+              text: match[1],
+              type: 'assignment',
+              hours: 1.5,
+              course: selectedCourse
+            });
+          }
         }
       }
 
-      result.assignments = result.assignments.map(item => ({
-        ...item,
-        id: item.id || `schedule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        course: selectedCourse || item.course
-      }));
+      // Validate and clean the result
+      if (!result.assignments || !Array.isArray(result.assignments)) {
+        throw new Error('Invalid response structure: missing assignments array');
+      }
+
+      // Validate each assignment
+      result.assignments = result.assignments.map((item, index) => validateAssignment(item, index));
+
+      // Update metadata
+      result.metadata = {
+        ...result.metadata,
+        totalItems: result.assignments.length,
+        extractionDate: new Date().toISOString()
+      };
 
       setExtractedData(result);
+
     } catch (err) {
-      setError(`Studiora extraction failed: ${err.message}`);
+      setError(`Extraction failed: ${err.message}`);
       console.error('Studiora extraction error:', err);
+
+      // Show partial results if any
+      if (err.partialResults) {
+        setExtractedData(err.partialResults);
+      }
     } finally {
       setIsExtracting(false);
     }
@@ -126,11 +262,17 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
       setInputText(content);
       await extractWithStudiora(content);
     };
+    reader.onerror = () => {
+      setError('Failed to read file');
+    };
     reader.readAsText(file);
   };
 
   const handleExtract = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim()) {
+      setError('Please enter some text to extract');
+      return;
+    }
     await extractWithStudiora(inputText);
   };
 
@@ -140,24 +282,36 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
   };
 
   const handleSave = () => {
+    if (!editedItem) return;
+
     const newAssignments = [...extractedData.assignments];
-    newAssignments[editIndex] = editedItem;
-    setExtractedData({ ...extractedData, assignments: newAssignments });
+    newAssignments[editIndex] = validateAssignment(editedItem, editIndex);
+    setExtractedData({
+      ...extractedData,
+      assignments: newAssignments,
+      metadata: {
+        ...extractedData.metadata,
+        totalItems: newAssignments.length
+      }
+    });
     setEditIndex(null);
     setEditedItem(null);
   };
 
   const handleDelete = (index) => {
     const newAssignments = extractedData.assignments.filter((_, i) => i !== index);
-    setExtractedData({ 
-      ...extractedData, 
+    setExtractedData({
+      ...extractedData,
       assignments: newAssignments,
-      metadata: { ...extractedData.metadata, totalItems: newAssignments.length }
+      metadata: {
+        ...extractedData.metadata,
+        totalItems: newAssignments.length
+      }
     });
   };
 
   const handleImportToStudiora = () => {
-    if (onExtractComplete) {
+    if (onExtractComplete && extractedData?.assignments) {
       onExtractComplete(extractedData.assignments);
     }
     onClose();
@@ -165,9 +319,9 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
 
   const downloadJSON = () => {
     const dataStr = JSON.stringify(extractedData, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
     const exportFileDefaultName = `studiora_extraction_${Date.now()}.json`;
-    
+
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
@@ -175,7 +329,13 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
   };
 
   const copyJSON = () => {
-    navigator.clipboard.writeText(JSON.stringify(extractedData, null, 2));
+    navigator.clipboard.writeText(JSON.stringify(extractedData, null, 2))
+      .then(() => {
+        // Could add a toast notification here
+      })
+      .catch((err) => {
+        console.error('Failed to copy:', err);
+      });
   };
 
   return (
@@ -207,11 +367,11 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
                 onChange={(e) => setSelectedCourse(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
               >
-                {courses.map(course => (
+                {courses?.map(course => (
                   <option key={course.id} value={course.id}>
                     {course.code} - {course.name}
                   </option>
-                ))}
+                )) || <option value="">No courses available</option>}
               </select>
             </div>
 
@@ -219,22 +379,20 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
             <div className="flex gap-2">
               <button
                 onClick={() => setInputMethod('paste')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  inputMethod === 'paste' 
-                    ? 'bg-purple-600 text-white' 
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${inputMethod === 'paste'
+                    ? 'bg-purple-600 text-white'
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+                  }`}
               >
                 <ClipboardPaste className="h-4 w-4" />
                 Paste Text
               </button>
               <button
                 onClick={() => setInputMethod('upload')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  inputMethod === 'upload' 
-                    ? 'bg-purple-600 text-white' 
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${inputMethod === 'upload'
+                    ? 'bg-purple-600 text-white'
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+                  }`}
               >
                 <Upload className="h-4 w-4" />
                 Upload Document
@@ -251,7 +409,7 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Paste your syllabus, course schedule, or any course documentation..."
-                  className="w-full h-64 p-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white font-mono text-sm"
+                  className="w-full h-64 p-4 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white font-mono text-sm resize-none"
                 />
               </div>
             ) : (
@@ -317,27 +475,27 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
               <div>
                 <h3 className="text-lg font-semibold dark:text-white">Extraction Results</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Found {extractedData.assignments.length} items • Confidence: {(extractedData.metadata.confidence * 100).toFixed(0)}%
+                  Found {extractedData.assignments.length} items • Confidence: {((extractedData.metadata?.confidence || 0) * 100).toFixed(0)}%
                 </p>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={copyJSON}
-                  className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                  className="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors"
                 >
                   <Copy className="h-4 w-4" />
                   Copy JSON
                 </button>
                 <button
                   onClick={downloadJSON}
-                  className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                  className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
                 >
                   <Download className="h-4 w-4" />
                   Download
                 </button>
                 <button
                   onClick={handleImportToStudiora}
-                  className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
+                  className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition-colors"
                 >
                   <Check className="h-4 w-4" />
                   Import to Studiora
@@ -347,7 +505,7 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
 
             {/* JSON Preview */}
             <details className="bg-gray-900 rounded-lg overflow-hidden">
-              <summary className="px-4 py-2 bg-gray-800 text-gray-300 cursor-pointer hover:bg-gray-700">
+              <summary className="px-4 py-2 bg-gray-800 text-gray-300 cursor-pointer hover:bg-gray-700 transition-colors">
                 View JSON Output
               </summary>
               <div className="p-4 overflow-x-auto max-h-64">
@@ -368,13 +526,13 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
                         <input
                           type="text"
                           value={editedItem.text}
-                          onChange={(e) => setEditedItem({...editedItem, text: e.target.value})}
+                          onChange={(e) => setEditedItem({ ...editedItem, text: e.target.value })}
                           className="border dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700 dark:text-white"
                           placeholder="Description"
                         />
                         <select
                           value={editedItem.type}
-                          onChange={(e) => setEditedItem({...editedItem, type: e.target.value})}
+                          onChange={(e) => setEditedItem({ ...editedItem, type: e.target.value })}
                           className="border dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700 dark:text-white"
                         >
                           <option value="assignment">assignment</option>
@@ -395,23 +553,24 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
                         </select>
                         <input
                           type="date"
-                          value={editedItem.date}
-                          onChange={(e) => setEditedItem({...editedItem, date: e.target.value})}
+                          value={editedItem.date || ''}
+                          onChange={(e) => setEditedItem({ ...editedItem, date: e.target.value || null })}
                           className="border dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700 dark:text-white"
                         />
                         <div className="flex gap-2">
                           <input
                             type="number"
                             value={editedItem.hours}
-                            onChange={(e) => setEditedItem({...editedItem, hours: parseFloat(e.target.value)})}
+                            onChange={(e) => setEditedItem({ ...editedItem, hours: parseFloat(e.target.value) || 1.5 })}
                             className="flex-1 border dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700 dark:text-white"
                             placeholder="Hours"
                             step="0.5"
+                            min="0.5"
                           />
                           <input
                             type="text"
                             value={editedItem.category || ''}
-                            onChange={(e) => setEditedItem({...editedItem, category: e.target.value || undefined})}
+                            onChange={(e) => setEditedItem({ ...editedItem, category: e.target.value || undefined })}
                             className="flex-1 border dark:border-gray-600 rounded px-3 py-2 dark:bg-gray-700 dark:text-white"
                             placeholder="Category"
                           />
@@ -440,18 +599,19 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            item.type === 'assignment' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
-                            item.type === 'quiz' || item.type === 'exam' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
-                            item.type === 'clinical' || item.type === 'simulation' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' :
-                            'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                          }`}>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${item.type === 'assignment' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
+                              item.type === 'quiz' || item.type === 'exam' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
+                                item.type === 'clinical' || item.type === 'simulation' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' :
+                                  'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                            }`}>
                             {item.type}
                           </span>
                           <h4 className="font-medium dark:text-white">{item.text}</h4>
                         </div>
                         <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-                          <span>Due: {new Date(item.date).toLocaleDateString()}</span>
+                          {item.date && (
+                            <span>Due: {new Date(item.date).toLocaleDateString()}</span>
+                          )}
                           <span>{item.hours}h</span>
                           {item.category && (
                             <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">
@@ -459,7 +619,7 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
                             </span>
                           )}
                           <span className="text-xs">
-                            Confidence: {(item.confidence * 100).toFixed(0)}%
+                            Confidence: {((item.confidence || 0) * 100).toFixed(0)}%
                           </span>
                         </div>
                       </div>
