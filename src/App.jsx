@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  BookOpen, Calendar, Plus, Settings, Download, Upload, 
+import {
+  BookOpen, Calendar, Plus, Settings, Download, Upload,
   Users, Brain, X, Menu, Moon, Sun, FileText, ChevronRight
 } from 'lucide-react';
 //import ImportWizard from './components/ImportWizard'; // Keep for now but won't be used
@@ -11,7 +11,7 @@ import CourseExtractorModal, { StudiorExtractorCard } from './components/CourseE
 class DataManager {
   static STORAGE_KEY = 'studioraData';
   static THEME_KEY = 'studioraTheme';
-  
+
   static loadData() {
     try {
       const saved = localStorage.getItem(this.STORAGE_KEY);
@@ -29,7 +29,7 @@ class DataManager {
     } catch (error) {
       console.error('Failed to load data:', error);
     }
-    
+
     return {
       courses: [],
       assignments: [],
@@ -39,7 +39,7 @@ class DataManager {
       parsingHistory: []
     };
   }
-  
+
   static saveData(data) {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
@@ -47,30 +47,30 @@ class DataManager {
       console.error('Failed to save data:', error);
     }
   }
-  
+
   static exportData(data) {
     const dataStr = JSON.stringify(data, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+
     const exportFileDefaultName = `studiora_backup_${new Date().toISOString().split('T')[0]}.json`;
-    
+
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
     linkElement.click();
   }
-  
+
   static importData(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
           const data = JSON.parse(e.target.result);
-          
+
           if (!data.courses || !Array.isArray(data.courses)) {
             throw new Error('Invalid data format: missing courses array');
           }
-          
+
           resolve({
             courses: data.courses || [],
             assignments: data.assignments || [],
@@ -87,7 +87,7 @@ class DataManager {
       reader.readAsText(file);
     });
   }
-  
+
   static getTheme() {
     try {
       return localStorage.getItem(this.THEME_KEY) || 'light';
@@ -95,7 +95,7 @@ class DataManager {
       return 'light';
     }
   }
-  
+
   static setTheme(theme) {
     try {
       localStorage.setItem(this.THEME_KEY, theme);
@@ -108,7 +108,7 @@ class DataManager {
 // Modal Components
 function Modal({ isOpen, onClose, children }) {
   if (!isOpen) return null;
-  
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -126,14 +126,14 @@ function AddCourseModal({ onClose, onAdd }) {
     instructor: '',
     color: '#3B82F6'
   });
-  
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (courseData.code && courseData.name) {
       onAdd(courseData);
     }
   };
-  
+
   return (
     <Modal isOpen={true} onClose={onClose}>
       <div className="p-6">
@@ -146,13 +146,13 @@ function AddCourseModal({ onClose, onAdd }) {
             <input
               type="text"
               value={courseData.code}
-              onChange={(e) => setCourseData({...courseData, code: e.target.value})}
+              onChange={(e) => setCourseData({ ...courseData, code: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
               placeholder="NURS 101"
               required
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Course Name*
@@ -160,13 +160,13 @@ function AddCourseModal({ onClose, onAdd }) {
             <input
               type="text"
               value={courseData.name}
-              onChange={(e) => setCourseData({...courseData, name: e.target.value})}
+              onChange={(e) => setCourseData({ ...courseData, name: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
               placeholder="Introduction to Nursing"
               required
             />
           </div>
-          
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -175,12 +175,12 @@ function AddCourseModal({ onClose, onAdd }) {
               <input
                 type="text"
                 value={courseData.credits}
-                onChange={(e) => setCourseData({...courseData, credits: e.target.value})}
+                onChange={(e) => setCourseData({ ...courseData, credits: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                 placeholder="3"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Color
@@ -188,12 +188,12 @@ function AddCourseModal({ onClose, onAdd }) {
               <input
                 type="color"
                 value={courseData.color}
-                onChange={(e) => setCourseData({...courseData, color: e.target.value})}
+                onChange={(e) => setCourseData({ ...courseData, color: e.target.value })}
                 className="w-full h-10 rounded cursor-pointer"
               />
             </div>
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Instructor
@@ -201,12 +201,12 @@ function AddCourseModal({ onClose, onAdd }) {
             <input
               type="text"
               value={courseData.instructor}
-              onChange={(e) => setCourseData({...courseData, instructor: e.target.value})}
+              onChange={(e) => setCourseData({ ...courseData, instructor: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
               placeholder="Dr. Smith"
             />
           </div>
-          
+
           <div className="flex gap-3 pt-4">
             <button
               type="submit"
@@ -241,12 +241,12 @@ function DataManagerModal({ appData, onClose, onImport }) {
       }
     }
   };
-  
+
   return (
     <Modal isOpen={true} onClose={onClose}>
       <div className="p-6">
         <h2 className="text-xl font-semibold mb-4 dark:text-white">Data Management</h2>
-        
+
         <div className="space-y-4">
           <div>
             <h3 className="font-medium mb-2 dark:text-white">Export Data</h3>
@@ -261,7 +261,7 @@ function DataManagerModal({ appData, onClose, onImport }) {
               Export Data
             </button>
           </div>
-          
+
           <div className="border-t dark:border-gray-700 pt-4">
             <h3 className="font-medium mb-2 dark:text-white">Import Data</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
@@ -292,16 +292,16 @@ function AllCoursesOverview({ courses, assignments, completedAssignments, onTogg
     totalCourses: courses.length,
     totalAssignments: assignments.length,
     completedAssignments: completedAssignments.size,
-    upcomingAssignments: assignments.filter(a => 
+    upcomingAssignments: assignments.filter(a =>
       new Date(a.date) > new Date() && !completedAssignments.has(a.id)
     ).length
   };
-  
+
   const upcomingAssignments = assignments
     .filter(a => new Date(a.date) > new Date() && !completedAssignments.has(a.id))
     .sort((a, b) => new Date(a.date) - new Date(b.date))
     .slice(0, 5);
-  
+
   return (
     <div className="space-y-6">
       {/* Statistics */}
@@ -323,10 +323,10 @@ function AllCoursesOverview({ courses, assignments, completedAssignments, onTogg
           <div className="text-sm text-gray-600 dark:text-gray-400">Upcoming</div>
         </div>
       </div>
-      
+
       {/* Studiora Extractor Card */}
       <StudiorExtractorCard onOpen={onOpenExtractor} />
-      
+
       {/* Upcoming Assignments */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold mb-4 dark:text-white">Upcoming Assignments</h3>
@@ -346,7 +346,7 @@ function AllCoursesOverview({ courses, assignments, completedAssignments, onTogg
           </div>
         )}
       </div>
-      
+
       {/* Course List */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold mb-4 dark:text-white">All Courses</h3>
@@ -354,7 +354,7 @@ function AllCoursesOverview({ courses, assignments, completedAssignments, onTogg
           {courses.map(course => {
             const courseAssignments = assignments.filter(a => a.course === course.id);
             const courseCompleted = courseAssignments.filter(a => completedAssignments.has(a.id)).length;
-            
+
             return (
               <div key={course.id} className="border dark:border-gray-700 rounded-lg p-4">
                 <div className="flex justify-between items-start">
@@ -380,11 +380,11 @@ function AllCoursesOverview({ courses, assignments, completedAssignments, onTogg
 
 function CourseDashboard({ course, assignments, completedAssignments, onToggleAssignment, onOpenExtractor }) {
   const courseAssignments = assignments.filter(a => a.course === course.id);
-  const upcomingAssignments = courseAssignments.filter(a => 
+  const upcomingAssignments = courseAssignments.filter(a =>
     new Date(a.date) > new Date() && !completedAssignments.has(a.id)
   );
   const completedCount = courseAssignments.filter(a => completedAssignments.has(a.id)).length;
-  
+
   return (
     <div className="space-y-6">
       {/* Course Header */}
@@ -407,7 +407,8 @@ function CourseDashboard({ course, assignments, completedAssignments, onToggleAs
             Extract from Syllabus
           </button>
         </div>
-        
+
+
         {/* Progress Bar */}
         <div className="mt-6">
           <div className="flex justify-between text-sm mb-2">
@@ -424,7 +425,7 @@ function CourseDashboard({ course, assignments, completedAssignments, onToggleAs
           </div>
         </div>
       </div>
-      
+
       {/* Assignments */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold mb-4 dark:text-white">Assignments</h3>
@@ -463,7 +464,7 @@ function AssignmentItem({ assignment, isCompleted, onToggle, course, showCourse 
   const dueDate = new Date(assignment.date);
   const now = new Date();
   const isOverdue = dueDate < now && !isCompleted;
-  
+
   return (
     <div className="flex items-start space-x-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
       <input
@@ -493,13 +494,12 @@ function AssignmentItem({ assignment, isCompleted, onToggle, course, showCourse 
             </div>
           </div>
         </div>
-        
+
         {assignment.source && (
           <div className="mt-1">
-            <span className={`text-xs px-1.5 py-0.5 rounded ${
-              assignment.source.includes('studiora') ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' :
+            <span className={`text-xs px-1.5 py-0.5 rounded ${assignment.source.includes('studiora') ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' :
               'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-            }`}>
+              }`}>
               {assignment.source}
             </span>
           </div>
@@ -537,7 +537,7 @@ function DataView({ appData }) {
             ))}
           </div>
         </div>
-        
+
         <div>
           <h3 className="font-medium dark:text-white">Recent Parsing History</h3>
           <div className="mt-2 space-y-1">
@@ -564,7 +564,7 @@ function StudioraNursingPlanner() {
   const [completedAssignments, setCompletedAssignments] = useState(new Set());
   const [isDarkMode, setIsDarkMode] = useState(DataManager.getTheme() === 'dark');
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  
+
   // Apply dark mode
   useEffect(() => {
     if (isDarkMode) {
@@ -574,44 +574,44 @@ function StudioraNursingPlanner() {
     }
     DataManager.setTheme(isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
-  
+
   // Auto-save when data changes
   useEffect(() => {
     DataManager.saveData(appData);
   }, [appData]);
-  
+
   // Select first course by default
   useEffect(() => {
     if (!selectedCourse && appData.courses.length > 0) {
       setSelectedCourse(appData.courses[0]);
     }
   }, [appData.courses, selectedCourse]);
-  
+
   const addCourse = (courseData) => {
     const newCourse = {
       id: `course_${Date.now()}`,
       ...courseData,
       createdAt: new Date().toISOString()
     };
-    
+
     setAppData(prev => ({
       ...prev,
       courses: [...prev.courses, newCourse]
     }));
-    
+
     setSelectedCourse(newCourse);
     setShowAddCourse(false);
   };
-  
+
   const updateCourse = (courseId, updates) => {
     setAppData(prev => ({
       ...prev,
-      courses: prev.courses.map(c => 
+      courses: prev.courses.map(c =>
         c.id === courseId ? { ...c, ...updates, updatedAt: new Date().toISOString() } : c
       )
     }));
   };
-  
+
   const deleteCourse = (courseId) => {
     if (window.confirm('Are you sure you want to delete this course and all its assignments?')) {
       setAppData(prev => ({
@@ -621,13 +621,13 @@ function StudioraNursingPlanner() {
         studyBlocks: prev.studyBlocks.filter(s => s.courseId !== courseId),
         calendarEvents: prev.calendarEvents?.filter(e => e.courseId !== courseId) || []
       }));
-      
+
       if (selectedCourse?.id === courseId) {
         setSelectedCourse(null);
       }
     }
   };
-  
+
   const toggleAssignment = (assignmentId) => {
     setCompletedAssignments(prev => {
       const newSet = new Set(prev);
@@ -639,7 +639,7 @@ function StudioraNursingPlanner() {
       return newSet;
     });
   };
-  
+
   const updateAssignment = (assignmentId, updates) => {
     setAppData(prev => ({
       ...prev,
@@ -648,21 +648,21 @@ function StudioraNursingPlanner() {
       )
     }));
   };
-  
+
   const addAssignment = (assignment) => {
     setAppData(prev => ({
       ...prev,
       assignments: [...prev.assignments, assignment]
     }));
   };
-  
+
   const handleExtractComplete = (assignments) => {
     // Add extracted assignments to app data
     setAppData(prev => ({
       ...prev,
       assignments: [...prev.assignments, ...assignments]
     }));
-    
+
     // Add to parsing history
     const history = {
       id: Date.now().toString(),
@@ -671,23 +671,23 @@ function StudioraNursingPlanner() {
       assignmentCount: assignments.length,
       confidence: 0.95
     };
-    
+
     setAppData(prev => ({
       ...prev,
       parsingHistory: [...prev.parsingHistory, history]
     }));
-    
+
     console.log(`Added ${assignments.length} items from Studiora extraction`);
   };
-  
+
   const handleDataImport = (importedData) => {
     setAppData(importedData);
   };
-  
-  const courseAssignments = selectedCourse 
+
+  const courseAssignments = selectedCourse
     ? appData.assignments.filter(a => a.course === selectedCourse.id)
     : [];
-  
+
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
       {/* Mobile Navigation Toggle */}
@@ -697,16 +697,15 @@ function StudioraNursingPlanner() {
       >
         <Menu className="h-6 w-6 dark:text-white" />
       </button>
-      
+
       {/* Sidebar */}
-      <aside className={`fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg transform transition-transform lg:translate-x-0 ${
-        mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
-      } z-40`}>
+      <aside className={`fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg transform transition-transform lg:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
+        } z-40`}>
         <div className="p-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Studiora</h1>
           <p className="text-sm text-gray-600 dark:text-gray-400">Nursing Course Manager</p>
         </div>
-        
+
         <nav className="mt-6">
           <div className="px-6 mb-4">
             <div className="flex items-center justify-between mb-2">
@@ -718,32 +717,30 @@ function StudioraNursingPlanner() {
                 <Plus size={16} />
               </button>
             </div>
-            
+
             {appData.courses.length === 0 ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">No courses yet</p>
             ) : (
               <div className="space-y-1">
                 <button
                   onClick={() => setSelectedCourse(null)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm ${
-                    !selectedCourse 
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm ${!selectedCourse
+                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
                 >
                   <Users className="inline h-4 w-4 mr-2" />
                   All Courses
                 </button>
-                
+
                 {appData.courses.map(course => (
                   <button
                     key={course.id}
                     onClick={() => setSelectedCourse(course)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center ${
-                      selectedCourse?.id === course.id 
-                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center ${selectedCourse?.id === course.id
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
                   >
                     <div
                       className="w-2 h-2 rounded-full mr-2"
@@ -755,7 +752,7 @@ function StudioraNursingPlanner() {
               </div>
             )}
           </div>
-          
+
           <div className="px-6 mt-8">
             <h2 className="text-xs font-semibold text-gray-400 uppercase mb-2">Tools</h2>
             <button
@@ -774,7 +771,7 @@ function StudioraNursingPlanner() {
             </button>
           </div>
         </nav>
-        
+
         <div className="absolute bottom-6 left-6 right-6">
           <button
             onClick={() => setIsDarkMode(!isDarkMode)}
@@ -785,7 +782,7 @@ function StudioraNursingPlanner() {
           </button>
         </div>
       </aside>
-      
+
       {/* Mobile Overlay */}
       {mobileNavOpen && (
         <div
@@ -793,7 +790,7 @@ function StudioraNursingPlanner() {
           onClick={() => setMobileNavOpen(false)}
         />
       )}
-      
+
       {/* Main Content */}
       <main className="lg:ml-64 p-4 lg:p-8">
         <div className="max-w-6xl mx-auto">
@@ -813,17 +810,16 @@ function StudioraNursingPlanner() {
                   <button
                     key={view}
                     onClick={() => setCurrentView(view)}
-                    className={`px-4 py-2 rounded-lg capitalize ${
-                      currentView === view 
-                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
+                    className={`px-4 py-2 rounded-lg capitalize ${currentView === view
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
                   >
                     {view}
                   </button>
                 ))}
               </div>
-              
+
               {/* Content based on view */}
               {currentView === 'dashboard' ? (
                 <CourseDashboard
@@ -849,12 +845,12 @@ function StudioraNursingPlanner() {
           )}
         </div>
       </main>
-      
+
       {/* Modals */}
       {showAddCourse && (
         <AddCourseModal onClose={() => setShowAddCourse(false)} onAdd={addCourse} />
       )}
-      
+
       {showExtractor && (
         <CourseExtractorModal
           isOpen={showExtractor}
@@ -863,7 +859,7 @@ function StudioraNursingPlanner() {
           courses={appData.courses}
         />
       )}
-      
+
       {showDataManager && (
         <DataManagerModal
           appData={appData}
