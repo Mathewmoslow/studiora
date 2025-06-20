@@ -1345,17 +1345,21 @@ function StudioraNursingPlanner() {
                     </select>
                   </div>
 
-                  {/* View Tabs - Mobile */}
-                  <div className="lg:hidden flex space-x-2 mb-4">
+                  {/* View Tabs */}
+                  <div className="flex space-x-2 mb-4">
                     {['dashboard', 'calendar', 'data'].map(view => (
                       <button
                         key={view}
                         onClick={() => setCurrentView(view)}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm capitalize ${
-                          currentView === view ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        className={`flex-1 sm:flex-none px-3 py-2 rounded-lg text-sm capitalize ${
+                          currentView === view 
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
                         }`}
                       >
-                        {view}
+                        {view === 'dashboard' ? '📊 Dashboard' :
+                        view === 'calendar' ? '📅 Calendar' :
+                        '📁 Data'}
                       </button>
                     ))}
                   </div>
