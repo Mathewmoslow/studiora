@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Brain, Copy, FileText, Check, Download, Trash2, Upload, X, ClipboardPaste, AlertCircle, ChevronRight } from 'lucide-react';
 
 const STUDIORA_EXTRACTION_PROMPT = `Identify all the unique items as part of this course including but not limited to assignments projects tests quizzes presentations chapter readings videos powerpoints to review pre recorded lectures supplemental materials to review things classified as prework simulations class time clinical time and any other requirement of the course both for a grade and not for a grade.`;
-
 // Modal wrapper component
 function Modal({ isOpen, onClose, children }) {
   if (!isOpen) return null;
@@ -14,86 +13,6 @@ function Modal({ isOpen, onClose, children }) {
       </div>
     </div>
   );
-}
-
-// Helper function to clean and extract JSON from AI response
-function extractJSONFromResponse(content) {
-  // Remove any markdown code blocks
-  let cleaned = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
-
-  // Find the start of JSON (first { or [)
-  const jsonStart = Math.min(
-    cleaned.indexOf('{') > -1 ? cleaned.indexOf('{') : Infinity,
-    cleaned.indexOf('[') > -1 ? cleaned.indexOf('[') : Infinity
-  );
-
-  if (jsonStart === Infinity) {
-    throw new Error('No JSON object found in response');
-  }
-
-  // Extract from the JSON start
-  cleaned = cleaned.substring(jsonStart);
-
-  // Find the matching closing bracket/brace
-  let depth = 0;
-  let inString = false;
-  let escapeNext = false;
-  let jsonEnd = -1;
-
-  for (let i = 0; i < cleaned.length; i++) {
-    const char = cleaned[i];
-
-    if (escapeNext) {
-      escapeNext = false;
-      continue;
-    }
-
-    if (char === '\\') {
-      escapeNext = true;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-
-    if (inString) continue;
-
-    if (char === '{' || char === '[') {
-      depth++;
-    } else if (char === '}' || char === ']') {
-      depth--;
-      if (depth === 0) {
-        jsonEnd = i + 1;
-        break;
-      }
-    }
-  }
-
-  if (jsonEnd === -1) {
-    throw new Error('Incomplete JSON object');
-  }
-
-  return cleaned.substring(0, jsonEnd);
-}
-
-// Helper to validate assignment structure
-function validateAssignment(item, index) {
-  const validTypes = ['assignment', 'quiz', 'exam', 'reading', 'video', 'clinical', 'simulation',
-    'presentation', 'discussion', 'class', 'powerpoint', 'lecture', 'lab', 'project', 'other'];
-
-  return {
-    id: item.id || `schedule_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
-    text: String(item.text || 'Untitled Item'),
-    date: item.date && item.date.match(/^\d{4}-\d{2}-\d{2}$/) ? item.date : null,
-    type: validTypes.includes(item.type) ? item.type : 'assignment',
-    hours: typeof item.hours === 'number' && item.hours > 0 ? item.hours : 1.5,
-    course: String(item.course || 'unknown'),
-    category: item.category ? String(item.category) : undefined,
-    confidence: typeof item.confidence === 'number' ? Math.min(1, Math.max(0, item.confidence)) : 0.8,
-    source: 'studiora-extracted'
-  };
 }
 
 // Course Extractor Modal
@@ -124,10 +43,12 @@ function CourseExtractorModal({ isOpen, onClose, onExtractComplete, courses }) {
 
 CRITICAL RULES:
 1. Return ONLY the JSON object, no other text before or after
-2. Ensure all JSON is properly formatted with commas between array items
-3. All dates must be in YYYY-MM-DD format or null
-4. All string values must be properly escaped
-5. Numbers must not have quotes
+2. Start your response with { and end with }
+3. No markdown formatting, no code blocks, no explanations
+4. Ensure all JSON is properly formatted with commas between array items
+5. All dates must be in YYYY-MM-DD format or null
+6. All string values must be properly escaped
+7. Numbers must not have quotes
 
 Return this EXACT structure:
 {
@@ -148,7 +69,7 @@ Return this EXACT structure:
     "extractionDate": "${new Date().toISOString()}",
     "totalItems": 0,
     "confidence": 0.8,
-    "model": "gpt-4",
+    "model": "gpt-4o",
     "prompt": "extraction"
   }
 }`;
@@ -161,14 +82,13 @@ Return this EXACT structure:
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-4o', // Using gpt-4o for better performance and JSON compliance
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `${STUDIORA_EXTRACTION_PROMPT}\n\nDocument content:\n${text.substring(0, 12000)}` } // Limit input to avoid token limits
           ],
           temperature: 0.1,
-          max_tokens: 4000,
-          response_format: { type: "json_object" } // Force JSON response if supported
+          max_tokens: 4000
         })
       });
 
@@ -180,61 +100,65 @@ Return this EXACT structure:
       const data = await response.json();
       let content = data.choices[0].message.content;
 
-      // Extract and parse JSON
+      // Simple parsing with basic fixes
       let result;
       try {
-        // First try direct parsing
+        // Remove any markdown formatting
+        content = content.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+
+        // Parse the JSON
         result = JSON.parse(content);
+
+        // Verify it has the expected structure
+        if (!result.assignments || !Array.isArray(result.assignments)) {
+          throw new Error('Missing assignments array');
+        }
+
       } catch (parseError) {
-        console.warn('Direct JSON parse failed, attempting extraction...', parseError);
+        console.error('JSON parse failed:', parseError);
 
-        try {
-          // Try to extract JSON from the response
-          const extracted = extractJSONFromResponse(content);
-          result = JSON.parse(extracted);
-        } catch (extractError) {
-          console.error('JSON extraction failed:', extractError);
-          console.log('Raw content:', content);
-
-          // Last resort - create a minimal valid structure
-          result = {
-            assignments: [],
-            metadata: {
-              extractionDate: new Date().toISOString(),
-              totalItems: 0,
-              confidence: 0,
-              model: 'gpt-4',
-              prompt: STUDIORA_EXTRACTION_PROMPT,
-              error: 'Failed to parse AI response'
-            }
-          };
-
-          // Try to extract at least some assignments manually
-          const assignmentMatches = content.matchAll(/"text"\s*:\s*"([^"]+)"/g);
-          for (const match of assignmentMatches) {
-            result.assignments.push({
-              text: match[1],
-              type: 'assignment',
-              hours: 1.5,
-              course: selectedCourse
-            });
+        // Simple fallback - create the expected structure
+        result = {
+          assignments: [],
+          metadata: {
+            extractionDate: new Date().toISOString(),
+            totalItems: 0,
+            confidence: 0.5,
+            model: 'gpt-4o',
+            error: 'Parse failed - created empty structure'
           }
+        };
+
+        // Try to extract at least the assignment texts
+        const textMatches = content.matchAll(/"text"\s*:\s*"([^"]+)"/g);
+        for (const match of textMatches) {
+          result.assignments.push({
+            id: `schedule_${Date.now()}_${result.assignments.length}`,
+            text: match[1],
+            type: 'assignment',
+            hours: 1.5,
+            course: selectedCourse,
+            source: 'studiora-extracted'
+          });
         }
       }
 
-      // Validate and clean the result
-      if (!result.assignments || !Array.isArray(result.assignments)) {
-        throw new Error('Invalid response structure: missing assignments array');
-      }
-
-      // Validate each assignment
-      result.assignments = result.assignments.map((item, index) => validateAssignment(item, index));
+      // Quick validation of assignments
+      result.assignments = result.assignments.map((item, idx) => ({
+        id: item.id || `schedule_${Date.now()}_${idx}`,
+        text: String(item.text || 'Untitled'),
+        date: item.date || null,
+        type: item.type || 'assignment',
+        hours: Number(item.hours) || 1.5,
+        course: selectedCourse || item.course || 'unknown',
+        confidence: Number(item.confidence) || 0.8,
+        source: 'studiora-extracted'
+      }));
 
       // Update metadata
       result.metadata = {
         ...result.metadata,
-        totalItems: result.assignments.length,
-        extractionDate: new Date().toISOString()
+        totalItems: result.assignments.length
       };
 
       setExtractedData(result);
@@ -285,7 +209,7 @@ Return this EXACT structure:
     if (!editedItem) return;
 
     const newAssignments = [...extractedData.assignments];
-    newAssignments[editIndex] = validateAssignment(editedItem, editIndex);
+    newAssignments[editIndex] = editedItem;
     setExtractedData({
       ...extractedData,
       assignments: newAssignments,
