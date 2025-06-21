@@ -1,5 +1,5 @@
 // api/extract-assignments.js
-const OpenAI = require('openai');
+import OpenAI from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -19,6 +19,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  console.log('API Key exists:', !!process.env.OPENAI_API_KEY);
+  
   try {
     const { courseName, content } = req.body;
     
@@ -26,31 +28,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing courseName or content' });
     }
     
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [{
         role: 'system',
-        content: `You are an expert at extracting assignments and events from course materials.
-        
-Extract ALL assignments, quizzes, exams, projects, and scheduled events.
-
-Return JSON with two arrays:
-1. assignments: Array of assignment objects
-2. events: Array of scheduled events
-
-For assignments include:
-- title: Clear, concise title
-- date: Due date in ISO format (YYYY-MM-DD) or null if not specified
-- type: One of: reading, quiz, assignment, project, exam, discussion, paper, presentation, lab, clinical
-- hours: Estimated hours needed (be realistic)
-
-For events include:
-- title: Event name
-- date: Date in ISO format or null
-- type: One of: class, lab, clinical, review, other
-- hours: Duration
-
-Be thorough - extract EVERYTHING that looks like an assignment or event.`
+        content: `Extract all assignments and events from course content. 
+        Return JSON with two arrays:
+        - assignments: [{title, date, type, hours}]
+        - events: [{title, date, type, hours}]
+        Use ISO date format (YYYY-MM-DD). Estimate hours if not specified.`
       }, {
         role: 'user',
         content: `Course: ${courseName}\n\n${content}`
@@ -67,7 +57,7 @@ Be thorough - extract EVERYTHING that looks like an assignment or event.`
     
     res.status(200).json(result);
   } catch (error) {
-    console.error('OpenAI Error:', error);
+    console.error('OpenAI Error:', error.message);
     res.status(500).json({ 
       error: 'Failed to extract assignments', 
       details: error.message 
