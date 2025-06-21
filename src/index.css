@@ -1,8 +1,13 @@
+/* index.css — Tailwind entry point */
+
+
+/* Import your custom styles */
+@import './App.css';
 /* Ensure proper font loading - @import must come first */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+
+/* Tailwind directives removed: make sure to use Tailwind's build process if you want to include them */
+
 /* @tailwind directives removed because they are not recognized by standard CSS processors.
    If you are using Tailwind CSS, make sure your build process includes Tailwind's PostCSS plugin. */
 
@@ -64,4 +69,12 @@
     background: #4b5563;
     border-radius: 4px;
   }
+}
+.event-item {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.event-item:hover {
+    background: #f9f9f9;
 }

@@ -4,6 +4,39 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Course Schedule Extractor</title>
+    
+    <!-- 
+    Backend API Endpoint Example (Node.js/Express):
+    
+    app.post('/api/extract-assignments', async (req, res) => {
+        const { courseName, content } = req.body;
+        
+        try {
+            const response = await openai.chat.completions.create({
+                model: 'gpt-4',
+                messages: [{
+                    role: 'system',
+                    content: `Extract assignments and events from course content. 
+                             Return JSON with arrays:
+                             - assignments: [{title, date, type, hours, description}]
+                             - events: [{title, date, type, hours, location}]
+                             Use ISO date format. Estimate hours if not specified.`
+                }, {
+                    role: 'user',
+                    content: content
+                }],
+                temperature: 0.3,
+                response_format: { type: "json_object" }
+            });
+            
+            const extracted = JSON.parse(response.choices[0].message.content);
+            res.json(extracted);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+    -->
+    
     <style>
         * {
             box-sizing: border-box;
@@ -21,28 +54,6 @@
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
-        }
-
-        /* Header */
-        .header {
-            background: #1a1a1a;
-            color: white;
-            padding: 20px;
-            margin: -20px -20px 20px -20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header h1 {
-            font-size: 24px;
-            margin: 0;
-        }
-
-        .header p {
-            margin: 4px 0 0 0;
-            opacity: 0.8;
-            font-size: 14px;
         }
 
         /* Buttons */
@@ -70,22 +81,12 @@
             background: #2563eb;
         }
 
-        .btn.success {
-            background: #10b981;
-            color: white;
-            border-color: #10b981;
-        }
-
-        .btn.success:hover {
-            background: #059669;
-        }
-
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
 
-        /* Course Extractor Modal */
+        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -107,7 +108,7 @@
             background: white;
             border-radius: 12px;
             padding: 24px;
-            max-width: 800px;
+            max-width: 600px;
             width: 90%;
             max-height: 90vh;
             overflow-y: auto;
@@ -128,7 +129,7 @@
             color: #666;
         }
 
-        /* Form Elements */
+        /* Forms */
         .form-group {
             margin-bottom: 16px;
         }
@@ -140,7 +141,6 @@
         }
 
         .form-group input,
-        .form-group select,
         .form-group textarea {
             width: 100%;
             padding: 8px 12px;
@@ -155,58 +155,7 @@
             font-size: 12px;
         }
 
-        /* Extraction Status */
-        .extraction-status {
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 16px;
-            font-size: 14px;
-        }
-
-        .extraction-status.processing {
-            background: #dbeafe;
-            color: #1e40af;
-        }
-
-        .extraction-status.success {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .extraction-status.error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        /* Results Preview */
-        .results-preview {
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 16px;
-            margin-top: 16px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .result-item {
-            padding: 8px;
-            margin-bottom: 8px;
-            background: #f9fafb;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        .result-item strong {
-            color: #1f2937;
-        }
-
-        .result-meta {
-            font-size: 12px;
-            color: #6b7280;
-            margin-top: 4px;
-        }
-
-        /* Calendar Styles */
+        /* Calendar */
         .calendar-container {
             background: white;
             border-radius: 12px;
@@ -222,11 +171,6 @@
             margin-bottom: 20px;
         }
 
-        .calendar-nav {
-            display: flex;
-            gap: 10px;
-        }
-
         .calendar-grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
@@ -239,7 +183,6 @@
             background: white;
             min-height: 100px;
             padding: 8px;
-            position: relative;
         }
 
         .calendar-day-header {
@@ -247,11 +190,6 @@
             padding: 10px;
             text-align: center;
             font-weight: 600;
-        }
-
-        .calendar-day-number {
-            font-weight: 600;
-            margin-bottom: 4px;
         }
 
         .calendar-day.today {
@@ -284,15 +222,10 @@
             color: #059669;
         }
 
-        .event.manual {
-            background: #f3e8ff;
-            color: #7c3aed;
-        }
-
         /* Stats */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 16px;
             margin-bottom: 20px;
         }
@@ -326,48 +259,84 @@
 
         .control-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 16px;
-            margin-top: 16px;
+            margin: 16px 0;
         }
 
-        /* Loading Spinner */
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3b82f6;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-left: 10px;
+        /* Drag and Drop */
+        #drop-zone.drag-over {
+            border-color: #3b82f6 !important;
+            background: #f0f9ff !important;
         }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        
+        #drop-zone:hover {
+            border-color: #3b82f6;
+            background: #fafafa;
+        }
+        
+        /* File List */
+        #file-list {
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        /* Status Messages */
+        #extraction-status:not(:empty) {
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        #extraction-status.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        #extraction-status.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        /* Mobile Responsiveness */
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .control-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .calendar-day {
+                min-height: 80px;
+                padding: 4px;
+            }
+            
+            .event {
+                font-size: 10px;
+                padding: 1px 4px;
+            }
+            
+            .modal-content {
+                width: 95%;
+                padding: 16px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div>
-                <h1>AI Course Schedule Extractor</h1>
-                <p>Extract assignments from your course materials with AI</p>
-            </div>
-            <div>
-                <button class="btn primary" onclick="openExtractorModal()">
-                    Extract Course Content
-                </button>
-                <button class="btn" onclick="clearAllData()">
-                    Clear All
-                </button>
-            </div>
+        <h1>AI Course Schedule Extractor</h1>
+        <p style="margin-bottom: 20px;">Extract assignments from each course, then generate your study schedule</p>
+
+        <div style="margin-bottom: 20px;">
+            <button class="btn primary" onclick="openExtractorModal()">Extract Course Content</button>
+            <button class="btn" onclick="clearAllData()">Clear All</button>
         </div>
 
-        <!-- Stats Section -->
-        <div class="stats-grid" id="stats-grid">
+        <!-- Stats -->
+        <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-label">Total Assignments</div>
                 <div class="stat-value" id="total-assignments">0</div>
@@ -403,7 +372,7 @@
                     <input type="number" id="block-duration" value="1.5" min="0.5" max="3" step="0.5">
                 </div>
             </div>
-            <div style="margin-top: 16px; display: flex; gap: 10px;">
+            <div>
                 <button class="btn primary" onclick="runAdaptiveScheduler()">Generate Schedule</button>
                 <button class="btn" onclick="clearStudyBlocks()">Clear Study Blocks</button>
                 <button class="btn" onclick="openCalendarManager()">Manage Events</button>
@@ -414,46 +383,657 @@
         <!-- Calendar -->
         <div class="calendar-container">
             <div class="calendar-header">
-                <div class="calendar-nav">
-                    <button class="btn" onclick="previousMonth()">← Previous</button>
-                    <button class="btn" onclick="nextMonth()">Next →</button>
-                </div>
-                <h3 id="current-month">Loading...</h3>
-                <button class="btn primary" onclick="showAddEventModal()">+ Add Event</button>
+                <button class="btn" onclick="previousMonth()">← Previous</button>
+                <h3 id="current-month"></h3>
+                <button class="btn" onclick="nextMonth()">Next →</button>
             </div>
             <div class="calendar-grid" id="calendar-grid"></div>
         </div>
     </div>
 
-    <!-- AI Course Extractor Modal -->
+    <!-- AI Extractor Modal -->
     <div class="modal" id="extractor-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>AI Course Content Extractor</h3>
+                <h3>Extract Course Content</h3>
                 <button class="close-btn" onclick="closeModal('extractor-modal')">&times;</button>
             </div>
-            
             <div class="form-group">
                 <label>Course Name</label>
-                <input type="text" id="course-name" placeholder="e.g., NURS 301 - Pharmacology">
+                <input type="text" id="course-name" placeholder="e.g., NURS 301" autofocus>
             </div>
-
             <div class="form-group">
-                <label>Content Type</label>
-                <select id="content-type">
-                    <option value="auto">Auto-detect</option>
-                    <option value="syllabus">Course Syllabus</option>
-                    <option value="canvas">Canvas Page</option>
-                    <option value="schedule">Course Schedule</option>
-                    <option value="mixed">Mixed Content</option>
-                </select>
+                <label>Upload or Paste Course Content</label>
+                
+                <!-- File Upload Area -->
+                <div id="drop-zone" style="
+                    border: 2px dashed #ddd;
+                    border-radius: 8px;
+                    padding: 40px;
+                    text-align: center;
+                    margin-bottom: 16px;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                ">
+                    <p style="margin: 0 0 10px 0; font-size: 16px;">
+                        📄 Drag & drop files here or click to upload
+                    </p>
+                    <p style="margin: 0; font-size: 14px; color: #666;">
+                        Supports PDF, DOCX, TXT, HTML (multiple files allowed)
+                    </p>
+                    <input type="file" id="file-input" accept=".pdf,.docx,.txt,.html" style="display: none;" multiple>
+                </div>
+                
+                <div style="text-align: center; margin: 10px 0; color: #666;">— OR —</div>
+                
+                <!-- Paste Area -->
+                <textarea id="course-content" placeholder="Paste syllabus, Canvas modules, or schedule here..."></textarea>
+                
+                <!-- File List -->
+                <div id="file-list" style="margin-top: 10px;"></div>
+                
+                <div id="clear-files-btn" style="display: none; margin-top: 8px;">
+                    <button type="button" class="btn" onclick="clearUploadedFiles()">Clear Files</button>
+                </div>
             </div>
+            <button class="btn primary" onclick="extractCourseContent(event)">Extract Assignments</button>
+            <div id="extraction-status" style="margin-top: 10px;"></div>
+        </div>
+    </div>
 
-            <div class="form-group">
-                <label>Paste Your Course Content</label>
-                <textarea id="course-content" placeholder="Paste your syllabus, Canvas modules, or course schedule here..."></textarea>
+    <!-- Calendar Manager Modal -->
+    <div class="modal" id="calendar-manager-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Manage Events</h3>
+                <button class="close-btn" onclick="closeModal('calendar-manager-modal')">&times;</button>
             </div>
+            <div id="events-list"></div>
+        </div>
+    </div>
 
-            <div class="form-group">
-                <label>OpenAI API Key</label>
-                <input
+    <script>
+        /*
+         * AI Course Schedule Extractor
+         * 
+         * This is a complete, self-contained file that:
+         * 1. Extracts assignments from course materials using AI
+         * 2. Creates a visual calendar with all assignments
+         * 3. Generates optimized study schedules
+         * 
+         * Setup: Create a backend endpoint at /api/extract-assignments
+         * that accepts { courseName, content } and returns
+         * { assignments: [...], events: [...] }
+         */
+        
+        // AdaptiveScheduler Class
+        class AdaptiveScheduler {
+            constructor() {
+                this.assignments = [];
+                this.events = [];
+                this.studyBlocks = [];
+                this.preferences = {
+                    dailyMaxHours: 3,
+                    weekendMaxHours: 4,
+                    blockDuration: 1.5
+                };
+            }
+
+            setAssignments(assignments) {
+                this.assignments = assignments;
+            }
+
+            setEvents(events) {
+                this.events = events;
+            }
+
+            setPreferences(prefs) {
+                this.preferences = { ...this.preferences, ...prefs };
+            }
+
+            generateSchedule() {
+                this.studyBlocks = [];
+                const sortedAssignments = [...this.assignments]
+                    .filter(a => !a.completed && a.date)
+                    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                sortedAssignments.forEach(assignment => {
+                    this.scheduleAssignment(assignment);
+                });
+
+                return this.studyBlocks;
+            }
+
+            scheduleAssignment(assignment) {
+                const dueDate = new Date(assignment.date);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                const hoursNeeded = assignment.hours || 2;
+                let hoursScheduled = 0;
+                let currentDate = new Date(today);
+                
+                while (hoursScheduled < hoursNeeded && currentDate <= dueDate) {
+                    const daySchedule = this.getScheduleForDay(currentDate);
+                    const availableHours = this.getAvailableHours(currentDate, daySchedule);
+                    
+                    if (availableHours > 0) {
+                        const hoursToSchedule = Math.min(
+                            this.preferences.blockDuration,
+                            hoursNeeded - hoursScheduled,
+                            availableHours
+                        );
+                        
+                        const block = {
+                            id: `study_${Date.now()}_${Math.random()}`,
+                            date: new Date(currentDate),
+                            title: `Study: ${assignment.title}`,
+                            type: 'study',
+                            hours: hoursToSchedule,
+                            assignmentId: assignment.id
+                        };
+                        
+                        this.studyBlocks.push(block);
+                        hoursScheduled += hoursToSchedule;
+                    }
+                    
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+            }
+
+            getScheduleForDay(date) {
+                const dayStart = new Date(date);
+                dayStart.setHours(0, 0, 0, 0);
+                const dayEnd = new Date(date);
+                dayEnd.setHours(23, 59, 59, 999);
+                
+                return [
+                    ...this.events.filter(e => {
+                        const eventDate = new Date(e.date);
+                        return eventDate >= dayStart && eventDate <= dayEnd;
+                    }),
+                    ...this.studyBlocks.filter(b => {
+                        const blockDate = new Date(b.date);
+                        return blockDate >= dayStart && blockDate <= dayEnd;
+                    })
+                ];
+            }
+
+            getAvailableHours(date, daySchedule) {
+                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                const maxHours = isWeekend ? this.preferences.weekendMaxHours : this.preferences.dailyMaxHours;
+                const scheduledHours = daySchedule.reduce((sum, item) => sum + (item.hours || 0), 0);
+                return Math.max(0, maxHours - scheduledHours);
+            }
+        }
+
+        // Global State
+        let scheduler = new AdaptiveScheduler();
+        let currentDate = new Date();
+        let assignments = [];
+        let events = [];
+        let studyBlocks = [];
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            generateCalendar();
+            updateStats();
+            setupFileUpload();
+            setupKeyboardShortcuts();
+        });
+        
+        // Keyboard shortcuts
+        function setupKeyboardShortcuts() {
+            document.addEventListener('keydown', (e) => {
+                // ESC to close modals
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('.modal.active').forEach(modal => {
+                        modal.classList.remove('active');
+                    });
+                }
+            });
+        }
+
+        // File Upload Setup
+        function setupFileUpload() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            
+            // Click to upload
+            dropZone.addEventListener('click', () => fileInput.click());
+            
+            // File input change
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+            
+            // Drag and drop
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#3b82f6';
+                dropZone.style.background = '#f0f9ff';
+            });
+            
+            dropZone.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#ddd';
+                dropZone.style.background = 'white';
+            });
+            
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#ddd';
+                dropZone.style.background = 'white';
+                handleFiles(e.dataTransfer.files);
+            });
+        }
+
+        // Handle uploaded files
+        let uploadedContent = '';
+        async function handleFiles(files) {
+            const fileList = document.getElementById('file-list');
+            fileList.innerHTML = '';
+            uploadedContent = '';
+            
+            for (let file of files) {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding: 8px; background: #f3f4f6; border-radius: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;';
+                item.innerHTML = `<span>📄 ${file.name} <span style="color: #666; font-size: 12px;">(${(file.size / 1024).toFixed(1)} KB)</span></span>`;
+                fileList.appendChild(item);
+                
+                // Read file content
+                try {
+                    const content = await readFile(file);
+                    uploadedContent += `\n\n--- ${file.name} ---\n${content}`;
+                    item.innerHTML += ` <span style="color: #10b981;">✓</span>`;
+                } catch (error) {
+                    item.innerHTML += ` <span style="color: #ef4444; font-size: 12px;" title="${error}">⚠️</span>`;
+                }
+            }
+            
+            // Clear paste area if files uploaded
+            if (uploadedContent) {
+                document.getElementById('course-content').value = '';
+                document.getElementById('course-content').placeholder = 'Files uploaded - clear file list to paste instead';
+                document.getElementById('clear-files-btn').style.display = 'block';
+            }
+        }
+        
+        // Clear uploaded files
+        function clearUploadedFiles() {
+            uploadedContent = '';
+            document.getElementById('file-list').innerHTML = '';
+            document.getElementById('course-content').placeholder = 'Paste syllabus, Canvas modules, or schedule here...';
+            document.getElementById('clear-files-btn').style.display = 'none';
+            document.getElementById('file-input').value = '';
+        }
+
+        // Read file content
+        function readFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = reject;
+                
+                if (file.type === 'application/pdf') {
+                    // For PDF files, you'd need a PDF parser library
+                    reject('PDF parsing requires additional library. Please paste content manually.');
+                } else if (file.name.endsWith('.docx')) {
+                    // For DOCX files, you'd need a DOCX parser
+                    reject('DOCX parsing requires additional library. Please paste content manually.');
+                } else {
+                    // Text and HTML files
+                    reader.readAsText(file);
+                }
+            });
+        }
+
+        // AI Course Extraction
+        async function extractCourseContent(event) {
+            event.preventDefault();
+            
+            const courseName = document.getElementById('course-name').value.trim();
+            const pastedContent = document.getElementById('course-content').value;
+            const content = uploadedContent || pastedContent;
+            const status = document.getElementById('extraction-status');
+            const extractBtn = event.target;
+
+            if (!content) {
+                status.textContent = 'Please upload files or paste content';
+                status.className = 'error';
+                return;
+            }
+
+            if (!courseName) {
+                status.textContent = 'Please enter a course name';
+                status.className = 'error';
+                return;
+            }
+
+            status.textContent = '⏳ Extracting assignments...';
+            status.className = '';
+            
+            // Disable button while processing
+            extractBtn.disabled = true;
+            try {
+                // Call your backend endpoint instead of OpenAI directly
+                const response = await fetch('/api/extract-assignments', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        courseName: courseName,
+                        content: content
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(errorData?.error || `Server error: ${response.status}`);
+                }
+
+                const extracted = await response.json();
+                
+                // Validate response format
+                if (!extracted || typeof extracted !== 'object') {
+                    throw new Error('Invalid response format from server');
+                }
+
+                // Add extracted assignments
+                if (extracted.assignments && Array.isArray(extracted.assignments)) {
+                    extracted.assignments.forEach(a => {
+                        assignments.push({
+                            id: `${courseName}_${Date.now()}_${Math.random()}`,
+                            title: a.title,
+                            course: courseName,
+                            date: a.date ? new Date(a.date) : null,
+                            type: a.type || 'assignment',
+                            hours: a.hours || estimateHours(a.type),
+                            completed: false
+                        });
+                    });
+                }
+
+                // Add extracted events
+                if (extracted.events && Array.isArray(extracted.events)) {
+                    extracted.events.forEach(e => {
+                        events.push({
+                            id: `event_${Date.now()}_${Math.random()}`,
+                            title: e.title,
+                            date: e.date ? new Date(e.date) : null,
+                            type: e.type || 'class',
+                            hours: e.hours || 1
+                        });
+                    });
+                }
+
+                saveState();
+                generateCalendar();
+                updateStats();
+                closeModal('extractor-modal');
+                
+                // Clear form
+                document.getElementById('course-content').value = '';
+                document.getElementById('course-content').placeholder = 'Paste syllabus, Canvas modules, or schedule here...';
+                document.getElementById('file-list').innerHTML = '';
+                uploadedContent = '';
+                
+                status.textContent = `✓ Extracted ${extracted.assignments?.length || 0} assignments and ${extracted.events?.length || 0} events`;
+                status.className = 'success';
+                
+                // Re-enable button
+                extractBtn.disabled = false;
+                
+                // Clear status after 5 seconds
+                setTimeout(() => {
+                    status.textContent = '';
+                    status.className = '';
+                }, 5000);
+            } catch (error) {
+                status.textContent = `Error: ${error.message}`;
+                status.className = 'error';
+                
+                // Re-enable button
+                extractBtn.disabled = false;
+            }
+        }
+
+        // Estimate hours based on type
+        function estimateHours(type) {
+            const estimates = {
+                reading: 2,
+                quiz: 1,
+                assignment: 3,
+                project: 5,
+                exam: 8,
+                discussion: 1,
+                paper: 4,
+                presentation: 3,
+                lab: 3,
+                clinical: 8
+            };
+            return estimates[type?.toLowerCase()] || 2;
+        }
+
+        // Calendar Functions
+        function generateCalendar() {
+            const grid = document.getElementById('calendar-grid');
+            grid.innerHTML = '';
+            
+            // Headers
+            ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
+                const header = document.createElement('div');
+                header.className = 'calendar-day-header';
+                header.textContent = day;
+                grid.appendChild(header);
+            });
+            
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startPadding = firstDay.getDay();
+            
+            // Empty cells
+            for (let i = 0; i < startPadding; i++) {
+                grid.appendChild(document.createElement('div'));
+            }
+            
+            // Days
+            const today = new Date();
+            for (let day = 1; day <= lastDay.getDate(); day++) {
+                const date = new Date(year, month, day);
+                const cell = document.createElement('div');
+                cell.className = 'calendar-day';
+                if (date.toDateString() === today.toDateString()) {
+                    cell.classList.add('today');
+                }
+                
+                const dayNumber = document.createElement('div');
+                dayNumber.style.fontWeight = '600';
+                dayNumber.textContent = day;
+                cell.appendChild(dayNumber);
+                
+                // Add events
+                const dayEvents = getAllEventsForDate(date);
+                dayEvents.forEach(event => {
+                    const eventEl = document.createElement('div');
+                    eventEl.className = `event ${event.type}`;
+                    eventEl.textContent = event.title;
+                    eventEl.onclick = () => alert(event.title);
+                    cell.appendChild(eventEl);
+                });
+                
+                grid.appendChild(cell);
+            }
+            
+            document.getElementById('current-month').textContent = 
+                new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        }
+
+        function getAllEventsForDate(date) {
+            const dateStr = date.toDateString();
+            return [
+                ...assignments.filter(a => a.date && new Date(a.date).toDateString() === dateStr),
+                ...events.filter(e => e.date && new Date(e.date).toDateString() === dateStr),
+                ...studyBlocks.filter(s => s.date && new Date(s.date).toDateString() === dateStr)
+            ];
+        }
+
+        function previousMonth() {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            generateCalendar();
+        }
+
+        function nextMonth() {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            generateCalendar();
+        }
+
+        // Scheduler Functions
+        function runAdaptiveScheduler() {
+            const prefs = {
+                dailyMaxHours: parseFloat(document.getElementById('daily-max').value),
+                weekendMaxHours: parseFloat(document.getElementById('weekend-max').value),
+                blockDuration: parseFloat(document.getElementById('block-duration').value)
+            };
+            
+            scheduler.setPreferences(prefs);
+            scheduler.setAssignments(assignments);
+            scheduler.setEvents(events);
+            
+            studyBlocks = scheduler.generateSchedule();
+            
+            saveState();
+            generateCalendar();
+            updateStats();
+            updateSchedulerStats();
+        }
+
+        function clearStudyBlocks() {
+            studyBlocks = [];
+            saveState();
+            generateCalendar();
+            updateStats();
+            updateSchedulerStats();
+        }
+
+        function updateSchedulerStats() {
+            document.getElementById('scheduler-status').textContent = 
+                `Generated ${studyBlocks.length} study blocks`;
+        }
+
+        // Calendar Manager
+        function openCalendarManager() {
+            const modal = document.getElementById('calendar-manager-modal');
+            const list = document.getElementById('events-list');
+            
+            const allEvents = [...assignments, ...events, ...studyBlocks]
+                .sort((a, b) => (a.date || 0) - (b.date || 0));
+            
+            list.innerHTML = allEvents.map(item => `
+                <div class="event-item">
+                    <strong>${item.title}</strong><br>
+                    <small>${item.date ? new Date(item.date).toLocaleDateString() : 'No date'} | ${item.type}</small>
+                    <button class="btn" style="float: right;" onclick="deleteEvent('${item.id}')">Delete</button>
+                </div>
+            `).join('');
+            
+            modal.classList.add('active');
+        }
+
+        function deleteEvent(id) {
+            assignments = assignments.filter(a => a.id !== id);
+            events = events.filter(e => e.id !== id);
+            studyBlocks = studyBlocks.filter(s => s.id !== id);
+            saveState();
+            generateCalendar();
+            updateStats();
+            openCalendarManager();
+        }
+
+        // Stats
+        function updateStats() {
+            const incompleteAssignments = assignments.filter(a => !a.completed);
+            document.getElementById('total-assignments').textContent = incompleteAssignments.length;
+            document.getElementById('study-hours').textContent = 
+                incompleteAssignments.reduce((sum, a) => sum + (a.hours || 0), 0).toFixed(1);
+            document.getElementById('scheduled-hours').textContent = 
+                studyBlocks.reduce((sum, b) => sum + b.hours, 0).toFixed(1);
+            document.getElementById('upcoming-events').textContent = 
+                [...assignments, ...events, ...studyBlocks]
+                    .filter(e => e.date && new Date(e.date) >= new Date()).length;
+        }
+
+        // Utility Functions
+        function openExtractorModal() {
+            // Clear form
+            document.getElementById('course-name').value = '';
+            document.getElementById('course-content').value = '';
+            document.getElementById('course-content').placeholder = 'Paste syllabus, Canvas modules, or schedule here...';
+            document.getElementById('file-list').innerHTML = '';
+            document.getElementById('clear-files-btn').style.display = 'none';
+            document.getElementById('extraction-status').textContent = '';
+            document.getElementById('extraction-status').className = '';
+            document.getElementById('file-input').value = '';
+            uploadedContent = '';
+            
+            document.getElementById('extractor-modal').classList.add('active');
+            
+            // Focus course name field
+            setTimeout(() => {
+                document.getElementById('course-name').focus();
+            }, 100);
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function clearAllData() {
+            if (confirm('Clear all data?')) {
+                assignments = [];
+                events = [];
+                studyBlocks = [];
+                saveState();
+                generateCalendar();
+                updateStats();
+            }
+        }
+
+        function saveState() {
+            localStorage.setItem('calendarData', JSON.stringify({
+                assignments,
+                events,
+                studyBlocks
+            }));
+        }
+
+        function loadState() {
+            const saved = localStorage.getItem('calendarData');
+            if (saved) {
+                const data = JSON.parse(saved);
+                assignments = data.assignments || [];
+                events = data.events || [];
+                studyBlocks = data.studyBlocks || [];
+                
+                // Convert dates
+                assignments.forEach(a => { if (a.date) a.date = new Date(a.date); });
+                events.forEach(e => { if (e.date) e.date = new Date(e.date); });
+                studyBlocks.forEach(s => { if (s.date) s.date = new Date(s.date); });
+            }
+        }
+
+        // Placeholder for missing functions
+        function showAddEventModal() {
+            alert('Add event functionality - to be implemented');
+        }
+
+        function editEvent(id) {
+            alert('Edit functionality - to be implemented');
+        }
+    </script>
+</body>
+</html>
