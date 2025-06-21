@@ -1,393 +1,459 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/studiora-icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#1e40af">
-    <title>Studiora - Intelligent Nursing Schedule Planner</title>
-    <meta name="description" content="AI-powered nursing education schedule planner with intelligent syllabus parsing" />
-    
-    <!-- Add this modern meta tag -->
-    <meta name="mobile-web-app-capable" content="yes">
-
-    <!-- Apple-specific -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <link rel="apple-touch-icon" href="/studiora-icon-180.png">
-    
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json">
-    
-    <!-- Open Graph for social sharing -->
-    <meta property="og:title" content="Studiora - Intelligent Nursing Schedule Planner">
-    <meta property="og:description" content="AI-powered nursing education schedule planner with intelligent syllabus parsing">
-    <meta property="og:image" content="/studiora-preview.png">
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-    // Complete Dashboard Integration Script
-// Add this to your main dashboard HTML to integrate all calendar management features
-
-// Global initialization
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Initializing enhanced dashboard...');
-    
-    // 1. Initialize the adaptive scheduler
-    if (!window.adaptiveScheduler) {
-        window.adaptiveScheduler = new AdaptiveScheduler();
-    }
-    
-    // 2. Load and initialize custom events
-    window.customEvents = JSON.parse(localStorage.getItem('customEvents') || '[]');
-    
-    // 3. Enhanced calendar initialization
-    if (window.calendar) {
-        initializeEnhancedCalendar();
-    }
-    
-    // 4. Update UI components
-    updateSchedulerStats();
-    
-    // 5. Add calendar manager button to header
-    addCalendarManagerButton();
-    
-    // 6. Initialize event listeners
-    initializeEventListeners();
-});
-
-// Enhanced calendar setup
-function initializeEnhancedCalendar() {
-    // Make calendar interactive
-    calendar.setOption('editable', true);
-    calendar.setOption('eventStartEditable', true);
-    calendar.setOption('eventDurationEditable', true);
-    calendar.setOption('eventResizableFromStart', true);
-    
-    // Add custom events to calendar
-    window.customEvents.forEach(event => {
-        calendar.addEvent(event);
-    });
-    
-    // Event change handler (drag & drop, resize)
-    calendar.on('eventChange', function(info) {
-        handleEventChange(info.event, info.oldEvent);
-    });
-    
-    // Event click handler
-    calendar.on('eventClick', function(info) {
-        // Prevent default browser navigation
-        info.jsEvent.preventDefault();
-        
-        const event = info.event;
-        
-        // Show different options based on event type
-        if (event.id && event.id.startsWith('adaptive_')) {
-            // Adaptive event - show info
-            showAdaptiveEventInfo(event);
-        } else if (event.extendedProps.isCustom || event.id.startsWith('custom_')) {
-            // Custom event - open editor
-            editEvent(event.id);
-        } else {
-            // Original event - show details
-            showEventDetails(event);
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Course Schedule Extractor</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
-    });
-    
-    // Add event on date click
-    calendar.on('dateClick', function(info) {
-        // Quick add event
-        quickAddEvent(info.date);
-    });
-    
-    // Context menu for right-click
-    calendar.on('eventMouseEnter', function(info) {
-        // Add tooltip
-        info.el.setAttribute('title', getEventTooltip(info.event));
-    });
-}
 
-// Handle event changes
-function handleEventChange(event, oldEvent) {
-    const eventData = {
-        id: event.id,
-        title: event.title,
-        start: event.start.toISOString(),
-        end: event.end ? event.end.toISOString() : event.start.toISOString(),
-        color: event.backgroundColor,
-        extendedProps: event.extendedProps
-    };
-    
-    // Update in arrays
-    [window.calendarEvents, window.customEvents].forEach(events => {
-        const index = events.findIndex(e => e.id === event.id);
-        if (index !== -1) {
-            events[index] = eventData;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            color: #333;
         }
-    });
-    
-    // Save custom events
-    if (event.id.startsWith('custom_') || event.extendedProps.isCustom) {
-        localStorage.setItem('customEvents', JSON.stringify(window.customEvents));
-    }
-    
-    // Show confirmation
-    showNotification('Event updated', 'success');
-}
 
-// Quick add event function
-function quickAddEvent(date) {
-    const title = prompt('Event title:');
-    if (!title) return;
-    
-    const event = {
-        id: `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        title: title,
-        start: date.toISOString().split('T')[0] + 'T09:00:00',
-        end: date.toISOString().split('T')[0] + 'T10:00:00',
-        color: '#2196F3',
-        extendedProps: {
-            type: 'personal',
-            isCustom: true,
-            notes: ''
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
         }
-    };
-    
-    calendar.addEvent(event);
-    window.customEvents.push(event);
-    localStorage.setItem('customEvents', JSON.stringify(window.customEvents));
-    
-    // Open editor for full details
-    setTimeout(() => editEvent(event.id), 100);
-}
 
-// Show adaptive event info
-function showAdaptiveEventInfo(event) {
-    const info = `
-        <strong>${event.title}</strong><br>
-        Time: ${formatEventTime(event)}<br>
-        Energy Level: ${Math.round(event.extendedProps.energyLevel * 100)}%<br>
-        Difficulty: ${event.extendedProps.difficulty}<br>
-        <br>
-        <small>This is an auto-scheduled study block</small>
-    `;
-    
-    showModal('Study Block Details', info);
-}
-
-// Show event details
-function showEventDetails(event) {
-    const info = `
-        <strong>${event.title}</strong><br>
-        Time: ${formatEventTime(event)}<br>
-        Type: ${event.extendedProps.type || 'Unknown'}<br>
-        ${event.extendedProps.course ? `Course: ${event.extendedProps.course.toUpperCase()}<br>` : ''}
-        ${event.extendedProps.notes ? `<br>Notes: ${event.extendedProps.notes}` : ''}
-    `;
-    
-    showModal('Event Details', info);
-}
-
-// Format event time
-function formatEventTime(event) {
-    const start = new Date(event.start);
-    const end = event.end ? new Date(event.end) : null;
-    
-    const dateStr = start.toLocaleDateString();
-    const startTime = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const endTime = end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    
-    return `${dateStr} ${startTime}${endTime ? ' - ' + endTime : ''}`;
-}
-
-// Get event tooltip
-function getEventTooltip(event) {
-    return `${event.title}\n${formatEventTime(event)}\nClick to ${event.id.startsWith('custom_') ? 'edit' : 'view details'}`;
-}
-
-// Show notification
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
-    notification.textContent = message;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 12px 24px;
-        background: ${type === 'success' ? '#4CAF50' : '#2196F3'};
-        color: white;
-        border-radius: 4px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        z-index: 10000;
-        animation: slideIn 0.3s ease;
-    `;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
-}
-
-// Show modal dialog
-function showModal(title, content) {
-    const modal = document.createElement('div');
-    modal.className = 'quick-modal';
-    modal.innerHTML = `
-        <div class="quick-modal-content">
-            <h3>${title}</h3>
-            <div>${content}</div>
-            <button onclick="this.closest('.quick-modal').remove()">Close</button>
-        </div>
-    `;
-    modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-    `;
-    
-    modal.querySelector('.quick-modal-content').style.cssText = `
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        max-width: 400px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Close on background click
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) {
-            modal.remove();
-        }
-    });
-}
-
-// Add calendar manager button
-function addCalendarManagerButton() {
-    const header = document.querySelector('.header');
-    if (header && !document.getElementById('calendar-manager-btn')) {
-        const button = document.createElement('button');
-        button.id = 'calendar-manager-btn';
-        button.className = 'calendar-manager-btn';
-        button.innerHTML = '📅 Calendar Manager';
-        button.onclick = openCalendarManager;
-        button.style.cssText = `
-            margin-left: auto;
-            padding: 8px 16px;
-            background: #2196F3;
+        /* Header */
+        .header {
+            background: #1a1a1a;
             color: white;
-            border: none;
-            border-radius: 4px;
+            padding: 20px;
+            margin: -20px -20px 20px -20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin: 0;
+        }
+
+        .header p {
+            margin: 4px 0 0 0;
+            opacity: 0.8;
+            font-size: 14px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
-            font-weight: 500;
             transition: all 0.2s;
-        `;
-        
-        button.addEventListener('mouseenter', function() {
-            this.style.background = '#1976D2';
-            this.style.transform = 'translateY(-1px)';
-        });
-        
-        button.addEventListener('mouseleave', function() {
-            this.style.background = '#2196F3';
-            this.style.transform = 'translateY(0)';
-        });
-        
-        header.appendChild(button);
-    }
-}
+        }
 
-// Initialize event listeners
-function initializeEventListeners() {
-    // Update stats when assignments change
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('assignment-checkbox')) {
-            setTimeout(updateSchedulerStats, 100);
+        .btn:hover {
+            background: #f0f0f0;
         }
-    });
-    
-    // Keyboard shortcuts
-    document.addEventListener('keydown', function(e) {
-        // Ctrl/Cmd + M: Open calendar manager
-        if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
-            e.preventDefault();
-            openCalendarManager();
-        }
-        
-        // Ctrl/Cmd + S: Run scheduler
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-            e.preventDefault();
-            runAdaptiveScheduler();
-        }
-    });
-    
-    // Auto-save periodically
-    setInterval(function() {
-        if (window.adaptiveScheduler) {
-            adaptiveScheduler.saveToStorage();
-        }
-    }, 60000); // Every minute
-}
 
-// Add CSS animations
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideIn {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
+        .btn.primary {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
         }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    
-    @keyframes slideOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-    }
-    
-    .fc-event {
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    
-    .fc-event:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-    
-    .fc-daygrid-event {
-        white-space: normal;
-    }
-`;
-document.head.appendChild(style);
 
-console.log('Enhanced dashboard initialized successfully!');
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+        .btn.primary:hover {
+            background: #2563eb;
+        }
+
+        .btn.success {
+            background: #10b981;
+            color: white;
+            border-color: #10b981;
+        }
+
+        .btn.success:hover {
+            background: #059669;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Course Extractor Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .form-group textarea {
+            min-height: 200px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        /* Extraction Status */
+        .extraction-status {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .extraction-status.processing {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .extraction-status.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .extraction-status.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        /* Results Preview */
+        .results-preview {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .result-item {
+            padding: 8px;
+            margin-bottom: 8px;
+            background: #f9fafb;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .result-item strong {
+            color: #1f2937;
+        }
+
+        .result-meta {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        /* Calendar Styles */
+        .calendar-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .calendar-nav {
+            display: flex;
+            gap: 10px;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 1px;
+            background: #e5e5e5;
+            border: 1px solid #e5e5e5;
+        }
+
+        .calendar-day {
+            background: white;
+            min-height: 100px;
+            padding: 8px;
+            position: relative;
+        }
+
+        .calendar-day-header {
+            background: #f8f8f8;
+            padding: 10px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .calendar-day-number {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .calendar-day.today {
+            background: #eff6ff;
+        }
+
+        .event {
+            padding: 2px 6px;
+            margin: 2px 0;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .event.assignment {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .event.study {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+
+        .event.class {
+            background: #d1fae5;
+            color: #059669;
+        }
+
+        .event.manual {
+            background: #f3e8ff;
+            color: #7c3aed;
+        }
+
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #e5e5e5;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        /* Scheduler Controls */
+        .scheduler-controls {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-top: 16px;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>AI Course Schedule Extractor</h1>
+                <p>Extract assignments from your course materials with AI</p>
+            </div>
+            <div>
+                <button class="btn primary" onclick="openExtractorModal()">
+                    Extract Course Content
+                </button>
+                <button class="btn" onclick="clearAllData()">
+                    Clear All
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Section -->
+        <div class="stats-grid" id="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Assignments</div>
+                <div class="stat-value" id="total-assignments">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Study Hours Needed</div>
+                <div class="stat-value" id="study-hours">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Scheduled Hours</div>
+                <div class="stat-value" id="scheduled-hours">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Upcoming Events</div>
+                <div class="stat-value" id="upcoming-events">0</div>
+            </div>
+        </div>
+
+        <!-- Scheduler Controls -->
+        <div class="scheduler-controls">
+            <h3>Adaptive Scheduler</h3>
+            <div class="control-grid">
+                <div class="form-group">
+                    <label>Daily Max Hours</label>
+                    <input type="number" id="daily-max" value="3" min="1" max="8" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>Weekend Max Hours</label>
+                    <input type="number" id="weekend-max" value="4" min="1" max="8" step="0.5">
+                </div>
+                <div class="form-group">
+                    <label>Block Duration</label>
+                    <input type="number" id="block-duration" value="1.5" min="0.5" max="3" step="0.5">
+                </div>
+            </div>
+            <div style="margin-top: 16px; display: flex; gap: 10px;">
+                <button class="btn primary" onclick="runAdaptiveScheduler()">Generate Schedule</button>
+                <button class="btn" onclick="clearStudyBlocks()">Clear Study Blocks</button>
+                <button class="btn" onclick="openCalendarManager()">Manage Events</button>
+            </div>
+            <div id="scheduler-status" style="margin-top: 10px; color: #666;"></div>
+        </div>
+
+        <!-- Calendar -->
+        <div class="calendar-container">
+            <div class="calendar-header">
+                <div class="calendar-nav">
+                    <button class="btn" onclick="previousMonth()">← Previous</button>
+                    <button class="btn" onclick="nextMonth()">Next →</button>
+                </div>
+                <h3 id="current-month">Loading...</h3>
+                <button class="btn primary" onclick="showAddEventModal()">+ Add Event</button>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
+        </div>
+    </div>
+
+    <!-- AI Course Extractor Modal -->
+    <div class="modal" id="extractor-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>AI Course Content Extractor</h3>
+                <button class="close-btn" onclick="closeModal('extractor-modal')">&times;</button>
+            </div>
+            
+            <div class="form-group">
+                <label>Course Name</label>
+                <input type="text" id="course-name" placeholder="e.g., NURS 301 - Pharmacology">
+            </div>
+
+            <div class="form-group">
+                <label>Content Type</label>
+                <select id="content-type">
+                    <option value="auto">Auto-detect</option>
+                    <option value="syllabus">Course Syllabus</option>
+                    <option value="canvas">Canvas Page</option>
+                    <option value="schedule">Course Schedule</option>
+                    <option value="mixed">Mixed Content</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Paste Your Course Content</label>
+                <textarea id="course-content" placeholder="Paste your syllabus, Canvas modules, or course schedule here..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>OpenAI API Key</label>
+                <input
